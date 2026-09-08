@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "PropHUB",
+    "slug": "prop-hub",
+    "version": "1.1.4",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/logo.jpeg",
+    "android": {
+      "package": "com.ntsoftbd.prophub",
+      "softwareKeyboardLayoutMode": "pan",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.jpeg",
+        "backgroundColor": "#1c3d5a"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c491042d-c0f3-498f-ba1d-2c907014ede2"
+      }
+    },
+    "plugins": [
+      "expo-font",
+      "@react-native-community/datetimepicker",
+      "expo-sharing",
+      "expo-asset"
+    ]
+  }
+}
