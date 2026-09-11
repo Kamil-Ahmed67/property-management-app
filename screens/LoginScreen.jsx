@@ -1,4 +1,4 @@
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,30 +12,33 @@ import {
   ActivityIndicator,
   StatusBar,
   useWindowDimensions,
+  ImageBackground,
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import { AuthContext } from '../providers/AuthProvider';
 import { colors, fonts } from '../theme';
 import { countries } from 'countries-list';
 import BannerSlider from '../components/BannerSlider';
 
-// Top banner slides (promo artwork, full width). Add or replace these with
-// your real banner files — the slider adapts to however many you list.
+// Top banner slides (promo artwork, full width).
 const BANNERS = [
   require('../assets/images/banners/login-1.jpeg'),
   require('../assets/images/banners/login-2.jpeg'),
-  // require('../assets/images/banners/banner-3-mobile.png'),
-  // require('../assets/images/banners/banner-4-mobile.png'),
 ];
+
+// Single-image banner alternative.
+const SINGLE_BANNER = require('../assets/images/banners/login-9.jpeg');
 const LOGO = require('../assets/images/logo.png');
 
-// Real pixel size of the banner artwork (login-1.jpeg / login-2.jpeg are
-// 1600x900). Sizing the box from this exact ratio means "cover" never has
-// to crop the image, so it renders identically — nothing zoomed or cut —
-// on every screen width.
-const BANNER_ASPECT_RATIO = 900 / 1600;
+// Remember Me: credentials are saved via expo-secure-store (OS Keychain /
+// Keystore), never plain AsyncStorage, since a password is involved. This
+// is entirely separate from the app's session handling — the session
+// itself stays in-memory-only by design, so closing the app still forces
+// a real login. This only pre-fills the form fields for convenience.
+const REMEMBER_ME_KEY = 'prophub_remembered_login';
 
 const COUNTRY_LIST = Object.entries(countries)
   .map(([code, data]) => ({
@@ -57,7 +60,9 @@ function buildFullPhone(dialCode, localNumber) {
 export default function LoginScreen({ onNavigateToRegister, onForgotPassword, onContactSupport }) {
   const { login, loading, error } = useContext(AuthContext);
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { height } = useWindowDimensions();
+  const isSmallScreen = height < 700;
+
   const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [countryPickerOpen, setCountryPickerOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
@@ -66,9 +71,27 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
-  // Banner height derived from the artwork's real aspect ratio — matches
-  // exactly on every device width, so "cover" fits with no crop/zoom.
-  const bannerHeight = Math.round(width * BANNER_ASPECT_RATIO);
+  // Load any previously remembered credentials once, on mount, and
+  // pre-fill the form + tick the checkbox if found.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await SecureStore.getItemAsync(REMEMBER_ME_KEY);
+        if (!raw) return;
+
+        const saved = JSON.parse(raw);
+        const matchedCountry = COUNTRY_LIST.find((c) => c.code === saved.countryCode);
+
+        if (matchedCountry) setCountry(matchedCountry);
+        setLocalPhone(saved.localPhone || '');
+        setPassword(saved.password || '');
+        setRememberMe(true);
+      } catch (e) {
+        // Corrupted or inaccessible entry — just start with an empty form.
+        console.log('[RememberMe] Could not load saved credentials:', e.message);
+      }
+    })();
+  }, []);
 
   const filteredCountries = useMemo(() => {
     const query = countrySearch.trim().toLowerCase();
@@ -91,13 +114,34 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
     setCountryPickerOpen(false);
   }
 
-  function handleSubmit() {
-    login(buildFullPhone(country.dialCode, localPhone), password);
+  async function handleSubmit() {
+    const fullPhone = buildFullPhone(country.dialCode, localPhone);
+    const success = await login(fullPhone, password);
+
+    if (!success) return; // Wrong credentials etc. — leave any saved entry as-is.
+
+    if (rememberMe) {
+      try {
+        await SecureStore.setItemAsync(
+          REMEMBER_ME_KEY,
+          JSON.stringify({ countryCode: country.code, localPhone, password })
+        );
+      } catch (e) {
+        // Login itself already succeeded — saving credentials is best-effort.
+        console.log('[RememberMe] Could not save credentials:', e.message);
+      }
+    } else {
+      try {
+        await SecureStore.deleteItemAsync(REMEMBER_ME_KEY);
+      } catch (e) {
+        // Nothing to clean up, or already gone — safe to ignore.
+      }
+    }
   }
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       <KeyboardAwareScrollView
         style={styles.page}
@@ -107,21 +151,73 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
         extraScrollHeight={20}
         showsVerticalScrollIndicator={false}
       >
-        {/* BANNER SLIDER — full-bleed, auto-advancing left to right */}
-        <BannerSlider images={BANNERS} height={bannerHeight} />
+        {/* ====================================================================
+            BANNER — TOP OF SCREEN (Matching ExploreScreen proportions & layout)
+           ==================================================================== */}
 
-        {/* FORM SHEET — overlaps the banner with rounded top corners */}
-        <View style={styles.sheet}>
-          <View style={styles.brandRow}>
-            <Image source={LOGO} style={styles.logo} resizeMode="contain" />
-            <View>
-              <Text style={styles.brandTitle}>প্রপহাব</Text>
-              {/* <Text style={styles.brandTagline}>আপনার বাড়ি, আমাদের সমাধান</Text> */}
+        {/* ---- OPTION A: BANNER SLIDER (UPDATED & COMMENTED OUT) ---- */}
+        {/* <View style={styles.imageBanner}>
+          <BannerSlider images={BANNERS} style={styles.bannerBg} />
+          <View style={styles.bannerLeftOverlay} />
+          <View style={[styles.bannerOverlay, { paddingTop: insets.top + (isSmallScreen ? 8 : 12) }]}>
+            <View style={styles.headerRow}>
+              <View style={styles.headerLeft}>
+                <Image source={LOGO} style={styles.logo} resizeMode="contain" />
+                <View>
+                  <Text style={styles.brandName}>PropHub</Text>
+                  <Text style={styles.brandTagline}>Your Home, Our Solution</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.bannerTextWrap}>
+              <Text style={styles.bannerTitle}>
+                আপনার স্বপ্নের{'\n'}বাড়ি, আমাদের{'\n'}সমাধান
+              </Text>
+              <Text style={styles.bannerSubtitle}>
+                বাড়ি, ভাড়াটিয়া, সোসাইটি বা সার্ভিস{'\n'}সবকিছু এখন এক প্ল্যাটফর্মে।
+              </Text>
             </View>
           </View>
-          <Text style={styles.welcomeHeading}>স্বাগতম!</Text>
-          <Text style={styles.welcomeSubtitle}>সহজেই আপনার সম্পত্তি পরিচালনা করুন</Text>
+        </View> */}
 
+        {/* ---- OPTION B: SINGLE IMAGE BANNER (ACTIVE) ---- */}
+        <View style={styles.imageBanner}>
+          <ImageBackground
+            source={SINGLE_BANNER}
+            style={styles.bannerBg}
+            imageStyle={styles.bannerBgImage}
+          >
+            {/* Soft left overlay to maintain contrast */}
+            <View style={styles.bannerLeftOverlay} />
+
+            {/* Header + Hero Text inside absolute overlay block */}
+            <View style={[styles.bannerOverlay, { paddingTop: insets.top + (isSmallScreen ? 8 : 12) }]}>
+              <View style={styles.headerRow}>
+                <View style={styles.headerLeft}>
+                  <Image source={LOGO} style={styles.logo} resizeMode="contain" />
+                  <View>
+                    <Text style={styles.brandName}>PropHub</Text>
+                    <Text style={styles.brandTagline}>Your Home, Our Solution</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.bannerTextWrap}>
+                <Text style={styles.bannerTitle}>
+                  আপনার স্বপ্নের{'\n'}বাড়ি, আমাদের{'\n'}সমাধান
+                </Text>
+
+                <Text style={styles.bannerSubtitle}>
+                  বাড়ি, ভাড়াটিয়া, সোসাইটি বা সার্ভিস{'\n'}সবকিছু এখন এক প্ল্যাটফর্মে।
+                </Text>
+              </View>
+            </View>
+          </ImageBackground>
+        </View>
+
+        {/* FORM SHEET */}
+        <View style={styles.sheet}>
           <Text style={styles.label}>মোবাইল নম্বর</Text>
           <View style={styles.phoneRow}>
             <TouchableOpacity
@@ -139,7 +235,7 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
               </View>
               <TextInput
                 style={styles.input}
-                placeholder="01XXXXXXXXX"
+                placeholder="আপনার ফোন নম্বর দিন"
                 placeholderTextColor={colors.muted}
                 value={localPhone}
                 onChangeText={setLocalPhone}
@@ -148,14 +244,14 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
             </View>
           </View>
 
-          <Text style={styles.label}>পাসওয়ার্ড</Text>
+          <Text style={styles.label}>পাসওয়ার্ড</Text>
           <View style={styles.passwordWrap}>
             <View style={styles.leadingIcon}>
               <Ionicons name="lock-closed-outline" size={17} color={colors.muted} />
             </View>
             <TextInput
               style={styles.input}
-              placeholder="আপনার পাসওয়ার্ড দিন"
+              placeholder="আপনার পাসওয়ার্ড দিন"
               placeholderTextColor={colors.muted}
               value={password}
               onChangeText={setPassword}
@@ -182,7 +278,7 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
               <Text style={styles.rememberText}>আমাকে মনে রাখুন</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={onForgotPassword} activeOpacity={0.7}>
-              <Text style={styles.forgotText}>পাসওয়ার্ড ভুলে গেছেন?</Text>
+              <Text style={styles.forgotText}>পাসওয়ার্ড ভুলে গেছেন?</Text>
             </TouchableOpacity>
           </View>
 
@@ -201,13 +297,16 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
             {loading ? (
               <ActivityIndicator color="#ffffff" />
             ) : (
-              <Text style={styles.submitLabel}>Login</Text>
+              <>
+                <Ionicons name="log-in-outline" size={19} color="#ffffff" />
+                <Text style={styles.submitLabel}>লগ ইন</Text>
+              </>
             )}
           </TouchableOpacity>
 
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
+            <Text style={styles.dividerText}>অথবা</Text>
             <View style={styles.dividerLine} />
           </View>
 
@@ -221,12 +320,28 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
             </Text>
           </TouchableOpacity>
 
-          <View style={styles.footNoteRow}>
-            <Ionicons name="shield-checkmark-outline" size={13} color={colors.muted} />
-            <Text style={styles.footNote}>আপনার তথ্য নিরাপদ এবং এনক্রিপ্টেড</Text>
+          <View style={styles.footer}>
+            <View style={styles.footerDivider} />
+
+            <View style={styles.trustBadge}>
+              <Ionicons name="shield-checkmark-outline" size={14} color="#0F9D58" />
+              <Text style={styles.trustBadgeText}>আপনার তথ্য নিরাপদ এবং এনক্রিপ্টেড</Text>
+            </View>
+
+            {onContactSupport ? (
+              <TouchableOpacity
+                onPress={onContactSupport}
+                style={styles.supportRow}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="headset-outline" size={14} color={colors.muted} />
+                <Text style={styles.supportText}>সহায়তা প্রয়োজন? আমাদের সাথে যোগাযোগ করুন</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         </View>
 
+        {/* COUNTRY PICKER MODAL */}
         <Modal
           visible={countryPickerOpen}
           transparent
@@ -278,7 +393,7 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
                     </Text>
                     <Text style={styles.optionDialCode}>{item.dialCode}</Text>
                     {country.code === item.code ? (
-                      <Ionicons name="checkmark" size={18} color={colors.primary} />
+                      <Ionicons name="checkmark" size={18} color="#0F9D58" />
                     ) : null}
                   </TouchableOpacity>
                 )}
@@ -292,68 +407,101 @@ export default function LoginScreen({ onNavigateToRegister, onForgotPassword, on
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f7f9fb' },
-  page: { flex: 1, backgroundColor: '#f7f9fb' },
-  content: { flexGrow: 1 },
+  screen: { flex: 1, backgroundColor: '#ffffff' },
+  page: { flex: 1, backgroundColor: '#ffffff' },
+  content: {},
 
-  /* FORM SHEET */
-  sheet: {
-    marginTop: -26,
-    backgroundColor: '#f7f9fb',
-    paddingHorizontal: 22,
-    paddingTop: 24,
-    paddingBottom: 54,
-    flexGrow: 1,
+  imageBanner: {
+    width: '100%',
+    aspectRatio: 1 / 0.95,
+    backgroundColor: '#F8FAF8',
   },
-  brandRow: {
+  bannerBg: {
+    flex: 1,
+    width: '100%',
+  },
+  bannerBgImage: {
+    resizeMode: 'cover',
+  },
+
+  bannerLeftOverlay: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '62%',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+
+  bannerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    marginBottom: 10,
-    justifyContent:'center',
-  },
-  logo: { width: 40, height: 40, borderRadius: 9 },
-  brandTitle: { color: colors.teal, fontSize: 35, fontFamily: fonts.extrabold, lineHeight: 35 },
-  // brandTagline: {
-  //   color: colors.muted,
-  //   fontSize: 11.5,
-  //   fontFamily: fonts.medium,
-  //   marginTop: 1,
-  // },
-  /* Centered brand mark, replacing the old left-aligned logo row */
-  // brandCenter: { alignItems: 'center', marginBottom: 14 },
-  // brandCenterLogo: { width: 44, height: 44, borderRadius: 12, marginBottom: 8 },
-  // brandCenterTitle: { color: colors.text, fontSize: 17, fontFamily: fonts.extrabold },
-  // brandCenterTagline: {
-  //   color: colors.muted,
-  //   fontSize: 11.5,
-  //   fontFamily: fonts.medium,
-  //   marginTop: 1,
-  // },
-
-  welcomeHeading: {
-    color: colors.text,
-    fontSize: 22,
-    fontFamily: 'Manrope-ExtraBold',
-    textAlign: 'center',
-  },
-  welcomeSubtitle: {
-    color: colors.muted,
-    fontSize: 13,
-    fontFamily: 'Manrope-Regular',
-    textAlign: 'center',
-    marginTop: 6,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
     marginBottom: 16,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  logo: { width: 36, height: 36, borderRadius: 8 },
+  brandName: {
+    color: '#0F5B46',
+    fontSize: 16,
+    fontFamily: 'Manrope-ExtraBold',
+    lineHeight: 18,
+  },
+  brandTagline: {
+    color: '#6B7280',
+    fontSize: 10,
+    fontFamily: 'Manrope-Medium',
+    lineHeight: 12,
+  },
+
+  bannerTextWrap: {
+    width: '60%',
+    paddingHorizontal: 20,
+  },
+  bannerTitle: {
+    color: '#0F3025',
+    fontSize: 22,
+    lineHeight: 30,
+    fontFamily: 'Manrope-ExtraBold',
+    marginBottom: 8,
+  },
+  bannerSubtitle: {
+    color: '#4B5563',
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: 'Manrope-Medium',
+  },
+
+  sheet: {
+    marginTop: -20,
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 20,
+  },
   label: {
-    color: colors.text,
+    color: '#111827',
     fontSize: 12.5,
     fontFamily: 'Manrope-Bold',
     letterSpacing: 0.3,
     marginBottom: 6,
   },
 
-  /* INPUTS */
   phoneRow: {
     flexDirection: 'row',
     alignItems: 'stretch',
@@ -368,19 +516,21 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    backgroundColor: '#FAFAFA',
     paddingHorizontal: 12,
     paddingVertical: 14,
   },
+  countryFlag: { fontSize: 16 },
+  countryDialCode: { fontSize: 14, color: colors.text, fontFamily: 'Manrope-Medium' },
   inputWrap: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    backgroundColor: '#FAFAFA',
   },
   passwordWrap: {
     width: '100%',
@@ -388,8 +538,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    backgroundColor: '#FAFAFA',
     marginBottom: 14,
   },
   leadingIcon: { paddingLeft: 14, paddingRight: 2 },
@@ -403,7 +553,6 @@ const styles = StyleSheet.create({
   },
   trailingIcon: { paddingHorizontal: 14, paddingVertical: 10 },
 
-  /* REMEMBER ME / FORGOT PASSWORD */
   optionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -421,11 +570,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#ffffff',
   },
-  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkboxChecked: { backgroundColor: '#0F9D58', borderColor: '#0F9D58' },
   rememberText: { fontSize: 12.5, fontFamily: 'Manrope-Regular', color: colors.text },
-  forgotText: { fontSize: 12.5, fontFamily: 'Manrope-Bold', color: colors.primaryDark },
+  forgotText: { fontSize: 12.5, fontFamily: 'Manrope-Bold', color: '#0F5B46' },
 
-  /* ERROR */
   errorBox: {
     backgroundColor: '#fef2f2',
     borderWidth: 1,
@@ -437,13 +585,14 @@ const styles = StyleSheet.create({
   },
   errorText: { color: colors.error, fontSize: 13, fontFamily: 'Manrope-Regular' },
 
-  /* SUBMIT */
   submitButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 17,
+    flexDirection: 'row',
+    backgroundColor: '#0F9D58',
+    borderRadius: 12,
+    paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
     marginTop: 22,
   },
   submitButtonDisabled: { opacity: 0.6 },
@@ -454,7 +603,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  /* DIVIDER + SUPPORT */
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -463,33 +611,44 @@ const styles = StyleSheet.create({
   },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
   dividerText: { fontSize: 12, fontFamily: 'Manrope-Medium', color: colors.muted },
-  supportRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 18,
-  },
-  supportText: { fontSize: 13, fontFamily: 'Manrope-Bold', color: colors.primaryDark },
 
   registerRow: { marginTop: 16, alignItems: 'center' },
   registerText: { fontSize: 13, fontFamily: 'Manrope-Regular', color: colors.muted },
-  registerLink: { color: colors.primary, fontFamily: 'Manrope-Bold' },
+  registerLink: { color: '#0F9D58', fontFamily: 'Manrope-Bold' },
 
-  footNoteRow: {
+  footer: {
+    marginTop: 15,
+    alignItems: 'center',
+  },
+
+  trustBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    marginTop: 16,
+    gap: 6,
+    backgroundColor: '#E6F4EA',
+    borderWidth: 1,
+    borderColor: '#C3E6CB',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
   },
-  footNote: {
+  trustBadgeText: {
+    color: '#0F9D58',
+    fontSize: 10,
+    fontFamily: 'Manrope-SemiBold',
+  },
+  supportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  supportText: {
     color: colors.muted,
     fontSize: 11.5,
-    fontFamily: 'Manrope-Regular',
+    fontFamily: 'Manrope-Medium',
   },
 
-  /* COUNTRY PICKER MODAL */
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.25)',
@@ -498,7 +657,7 @@ const styles = StyleSheet.create({
   },
   pickerCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 8,
+    borderRadius: 12,
     paddingTop: 8,
     paddingBottom: 4,
     maxHeight: '75%',
@@ -521,7 +680,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
-    backgroundColor: '#fafbfc',
+    backgroundColor: '#FAFAFA',
     paddingHorizontal: 12,
     paddingVertical: 9,
   },

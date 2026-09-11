@@ -25,26 +25,15 @@ import config from '../config';
 // `value` is sent to the API and stored — it stays English so existing
 // records keep matching. Only the visible label/hint translate.
 const PROPERTY_TYPES = [
-  { value: 'Land', initial: 'LD', labelKey: 'propertyType.land', hintKey: 'propertyType.land.hint' },
-  { value: 'Flat', initial: 'FL', labelKey: 'propertyType.flat', hintKey: 'propertyType.flat.hint' },
-  { value: 'Plot', initial: 'PL', labelKey: 'propertyType.plot', hintKey: 'propertyType.plot.hint' },
-  { value: 'Store', initial: 'ST', labelKey: 'propertyType.store', hintKey: 'propertyType.store.hint' },
-  { value: 'Garage', initial: 'GR', labelKey: 'propertyType.garage', hintKey: 'propertyType.garage.hint' },
+  { value: 'Building', initial: 'BD', labelKey: 'propertyType.building', hintKey: 'propertyType.building.hint' },
   { value: 'Market', initial: 'MK', labelKey: 'propertyType.market', hintKey: 'propertyType.market.hint' },
-  { value: 'Showroom', initial: 'SR', labelKey: 'propertyType.showroom', hintKey: 'propertyType.showroom.hint' },
-  { value: 'Office', initial: 'OF', labelKey: 'propertyType.office', hintKey: 'propertyType.office.hint' },
-  { value: 'Studio', initial: 'SD', labelKey: 'propertyType.studio', hintKey: 'propertyType.studio.hint' },
-  { value: 'Warehouse', initial: 'WH', labelKey: 'propertyType.warehouse', hintKey: 'propertyType.warehouse.hint' },
-  { value: 'Car', initial: 'CR', labelKey: 'propertyType.car', hintKey: 'propertyType.car.hint' },
   { value: 'Other', initial: 'OT', labelKey: 'propertyType.other', hintKey: 'propertyType.other.hint' },
 ];
 const TENANT_ID = 'PropHub';
 const FIELD_KEYS = ['name', 'address', 'securityName', 'securityPhone', 'type'];
-
 export default function AddPropertyScreen({ onNavigate }) {
   const { loginData } = useContext(AuthContext);
   const { t } = useLanguage();
-
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [securityName, setSecurityName] = useState('');
@@ -216,6 +205,21 @@ export default function AddPropertyScreen({ onNavigate }) {
         <View style={styles.card}>
           <Text style={styles.groupHeading}>{t('addProperty.groupProperty')}</Text>
 
+          <Text style={styles.label}>{t('addProperty.type')}</Text>
+          <TouchableOpacity style={styles.dropdownButton} onPress={openTypeDropdown} activeOpacity={0.7}>
+            <View style={styles.dropdownLeft}>
+              <View style={styles.optionBadge}>
+                <Text style={styles.optionBadgeText}>
+                  {selectedType ? selectedType.initial : '—'}
+                </Text>
+              </View>
+              <Text style={type ? styles.dropdownValue : styles.dropdownPlaceholder}>
+                {selectedType ? t(selectedType.labelKey) : t('addProperty.selectType')}
+              </Text>
+            </View>
+            <Ionicons name="chevron-down" size={18} color={colors.muted} />
+          </TouchableOpacity>
+
           <Text style={styles.label}>{t('addProperty.name')}</Text>
           <TextInput
             ref={nameRef}
@@ -278,24 +282,6 @@ export default function AddPropertyScreen({ onNavigate }) {
             keyboardType="phone-pad"
             returnKeyType="done"
           />
-
-          <View style={styles.divider} />
-          <Text style={styles.groupHeading}>{t('addProperty.groupType')}</Text>
-
-          <Text style={styles.label}>{t('addProperty.type')}</Text>
-          <TouchableOpacity style={styles.dropdownButton} onPress={openTypeDropdown} activeOpacity={0.7}>
-            <View style={styles.dropdownLeft}>
-              <View style={styles.optionBadge}>
-                <Text style={styles.optionBadgeText}>
-                  {selectedType ? selectedType.initial : '—'}
-                </Text>
-              </View>
-              <Text style={type ? styles.dropdownValue : styles.dropdownPlaceholder}>
-                {selectedType ? t(selectedType.labelKey) : t('addProperty.selectType')}
-              </Text>
-            </View>
-            <Ionicons name="chevron-down" size={18} color={colors.muted} />
-          </TouchableOpacity>
         </View>
 
         <Text style={styles.footnote}>{t('addProperty.footnote')}</Text>
@@ -551,6 +537,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fafbfc',
     paddingHorizontal: 14,
     paddingVertical: 12,
+    marginBottom: 16,
   },
   dropdownLeft: {
     flexDirection: 'row',

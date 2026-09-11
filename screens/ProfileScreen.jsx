@@ -5,10 +5,12 @@ import { AuthContext } from '../providers/AuthProvider';
 import { useLanguage } from '../providers/LanguageProvider';
 import { colors } from '../theme';
 import config from '../config';
+import { useLogoutConfirm } from '../providers/LogoutConfirmProvider';
 
 export default function ProfileScreen() {
-  const { loginData, logout } = useContext(AuthContext);
+  const { loginData } = useContext(AuthContext);
   const { t } = useLanguage();
+  const { requestLogout } = useLogoutConfirm();
 
   const name = loginData?.Name?.trim() || t('profile.defaultName');
   const initials = name
@@ -85,7 +87,7 @@ export default function ProfileScreen() {
         )}
       </View>
 
-      <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.85}>
+      <TouchableOpacity style={styles.logoutButton} onPress={requestLogout} activeOpacity={0.85}>
         <Ionicons name="log-out-outline" size={18} color={colors.error} />
         <Text style={styles.logoutLabel}>{t('profile.logout')}</Text>
       </TouchableOpacity>

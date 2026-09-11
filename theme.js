@@ -26,6 +26,8 @@ export const colors = {
   pillLight: 'rgba(255,255,255,0.14)',
 
   teal: '#0e7c66',
+  tealDark: '#076552',
+  tealLight: '#fbfcfc',
 };
 
 

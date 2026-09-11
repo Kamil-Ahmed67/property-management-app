@@ -197,7 +197,7 @@ export const AuthProvider = ({ children, onLogout }) => {
     if (!phone || !password) {
       setError('Phone number and password are required');
       setLoading(false);
-      return;
+      return false;
     }
 
     try {
@@ -234,6 +234,7 @@ export const AuthProvider = ({ children, onLogout }) => {
       fn.current.scheduleRefresh(expiration);
 
       console.log('[Auth] ✅ Logged in. Token expires:', expiration);
+      return true;
     } catch (err) {
       console.log('Login error:', err.message);
       if (err.message === 'Network request failed') {
@@ -241,6 +242,7 @@ export const AuthProvider = ({ children, onLogout }) => {
       } else {
         setError(err.message || 'Invalid credentials, please try again later.');
       }
+      return false;
     } finally {
       setLoading(false);
     }

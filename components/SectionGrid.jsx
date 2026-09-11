@@ -3,38 +3,72 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 
 const COLUMNS = 4;
-const GAP = 10;
-const HORIZONTAL_PADDING = 16;
+const GAP = 8;
+const HORIZONTAL_PADDING = 12;
 
-export default function SectionGrid({ title, accentColor, items, onSelect }) {
+const DEFAULT_PALETTE = [
+  '#0F9D58', // Green
+  '#2F80ED', // Blue
+  '#F2994A', // Orange / Amber
+  '#EB5757', // Red
+  '#7C3AED', // Purple
+  '#00A896', // Teal
+];
+
+export default function SectionGrid({
+  title,
+  items = [],
+  onSelect,
+  palette = DEFAULT_PALETTE,
+  paletteOffset = 0,
+}) {
   const { width } = useWindowDimensions();
-  const itemWidth = (width - HORIZONTAL_PADDING * 2 - GAP * (COLUMNS - 1)) / COLUMNS;
+
+  // Precise card width calculation accounting for horizontal padding & grid gaps
+  const itemWidth = Math.floor(
+    (width - HORIZONTAL_PADDING * 2 - GAP * (COLUMNS - 1)) / COLUMNS
+  );
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.headingRow}>
-        <View style={[styles.accentBar, { backgroundColor: accentColor }]} />
-        <Text style={styles.heading}>{title}</Text>
-      </View>
+      {/* Title renderer */}
+      {title ? <Text style={styles.heading}>{title}</Text> : null}
 
       <View style={styles.grid}>
-        {items.map((item, index) => (
-          <TouchableOpacity
-            key={item.key}
-            style={[
-              styles.item,
-              { width: itemWidth },
-              (index + 1) % COLUMNS !== 0 && { marginRight: GAP },
-            ]}
-            onPress={() => onSelect?.(item.key)}
-            activeOpacity={0.75}
-          >
-            <Ionicons name={item.icon} size={26} color={accentColor} />
-            <Text style={styles.itemLabel} numberOfLines={2}>
-              {item.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {items.map((item, index) => {
+          const color = palette[(index + paletteOffset) % palette.length];
+          return (
+            <TouchableOpacity
+  key={item.key || index}
+  style={[
+    styles.item,
+    {
+      width: itemWidth,
+      backgroundColor: `${color}14`,
+      borderWidth: 1,
+      borderColor: `${color}20`,
+    },
+  ]}
+  onPress={() => onSelect?.(item.key)}
+  activeOpacity={0.8}
+>
+              {/* Top Icon Badge */}
+              <View style={[styles.iconBadge, { backgroundColor: `${color}22` }]}>
+                <Ionicons name={item.icon} size={18} color={color} />
+              </View>
+
+              {/* Label */}
+              <Text style={styles.itemLabel} numberOfLines={2}>
+                {item.label}
+              </Text>
+
+              {/* Bottom Circular Chevron Action */}
+              <View style={styles.chevronBadge}>
+                <Ionicons name="chevron-forward" size={11} color={color} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
@@ -43,43 +77,55 @@ export default function SectionGrid({ title, accentColor, items, onSelect }) {
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: HORIZONTAL_PADDING,
-    marginBottom: 18,
-  },
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-  },
-  accentBar: {
-    width: 4,
-    height: 16,
-    borderRadius: 1,
+    marginBottom: 12,
   },
   heading: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: 'Manrope-Bold',
+    marginBottom: 8,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: GAP,
   },
   item: {
-    aspectRatio: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 5,
+    borderRadius: 6,
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 10,
+    paddingHorizontal: 4,
+    overflow: 'hidden', // Ensures background color respects card corner radius
+  },
+  iconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    padding: 10,
-    marginBottom: GAP,
+    marginBottom: 4,
   },
   itemLabel: {
-    color: colors.text,
-    fontSize: 10.5,
-    fontFamily: 'Manrope-SemiBold',
+    color: '#1F2937',
+    fontSize: 10,
+    fontFamily: 'Manrope-Bold',
     textAlign: 'center',
-    lineHeight: 13,
+    lineHeight: 14,
+    marginBottom: 4,
+    minHeight: 28, // Fixes vertical alignment for 1-line vs 2-line labels
+  },
+  chevronBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
   },
 });

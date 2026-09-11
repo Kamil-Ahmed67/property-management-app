@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -67,6 +67,7 @@ export default function BillCollectionScreen() {
   const [year, setYear] = useState(CURRENT_YEAR);
   const [bills, setBills] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   const [activeDropdown, setActiveDropdown] = useState(null);
 
@@ -102,6 +103,7 @@ export default function BillCollectionScreen() {
 
   async function loadBills() {
     setLoading(true);
+    setSearch('');
     try {
       const response = await fetch(
         `${config.BMS_API}api/GetBillList?phone=${encodeURIComponent(phone)}&billMonth=${encodeURIComponent(month)}&billYear=${encodeURIComponent(year)}`,
@@ -292,6 +294,19 @@ export default function BillCollectionScreen() {
     },
   }[activeDropdown];
 
+  // Client-side filter over whatever this month/year already loaded — no
+  // extra API call needed, since the full list for the period is in hand.
+  const filteredBills = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return bills;
+    return bills.filter(
+      (b) =>
+        (b.TenantName || '').toLowerCase().includes(query) ||
+        (b.PropertyName || '').toLowerCase().includes(query) ||
+        (b.FlatName || '').toLowerCase().includes(query)
+    );
+  }, [bills, search]);
+
   const totalAmount = bills.reduce((sum, b) => sum + (b.Amount || 0), 0);
   const totalCollected = bills.reduce((sum, b) => sum + (b.PaidAmount || 0), 0);
 
@@ -300,7 +315,7 @@ export default function BillCollectionScreen() {
       <ScrollView style={styles.page} contentContainerStyle={styles.content}>
         <View style={styles.headingRow}>
           <View style={styles.iconWrap}>
-            <Ionicons name="cash-outline" size={20} color={colors.primary} />
+            <Ionicons name="cash-outline" size={16} color={colors.primary} />
           </View>
           <View>
             <Text style={styles.eyebrow}>{t('bill.eyebrow')}</Text>
@@ -315,14 +330,14 @@ export default function BillCollectionScreen() {
             <Text style={styles.label}>{t('bill.month')}</Text>
             <TouchableOpacity style={styles.dropdownButton} onPress={() => openDropdown('month')}>
               <Text style={styles.dropdownValue}>{monthLabel}</Text>
-              <Ionicons name="chevron-down" size={18} color={colors.muted} />
+              <Ionicons name="chevron-down" size={15} color={colors.muted} />
             </TouchableOpacity>
           </View>
           <View style={styles.rowItem}>
             <Text style={styles.label}>{t('bill.year')}</Text>
             <TouchableOpacity style={styles.dropdownButton} onPress={() => openDropdown('year')}>
               <Text style={styles.dropdownValue}>{year}</Text>
-              <Ionicons name="chevron-down" size={18} color={colors.muted} />
+              <Ionicons name="chevron-down" size={15} color={colors.muted} />
             </TouchableOpacity>
           </View>
         </View>
@@ -340,6 +355,24 @@ export default function BillCollectionScreen() {
           </View>
         </View>
 
+        {bills.length > 0 ? (
+          <View style={styles.searchWrap}>
+            <Ionicons name="search" size={14} color={colors.muted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={t('bill.searchPlaceholder')}
+              placeholderTextColor={colors.muted}
+              value={search}
+              onChangeText={setSearch}
+            />
+            {search.length > 0 ? (
+              <TouchableOpacity onPress={() => setSearch('')} hitSlop={8}>
+                <Ionicons name="close-circle" size={14} color={colors.muted} />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
         {loading ? (
           <View style={styles.centerBox}>
             <ActivityIndicator color={colors.primary} />
@@ -350,8 +383,12 @@ export default function BillCollectionScreen() {
               {t('billCollection.noBillsForMonth', { month: monthLabel, year })}
             </Text>
           </View>
+        ) : filteredBills.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>{t('form.noMatches')}</Text>
+          </View>
         ) : (
-          bills.map((bill) => {
+          filteredBills.map((bill) => {
             const normalizedStatus = (bill.Status || '').toLowerCase();
             const isPaid = normalizedStatus === 'paid';
             const isPartial = normalizedStatus === 'partial paid';
@@ -398,7 +435,7 @@ export default function BillCollectionScreen() {
                   >
                     <Ionicons
                       name={isPaid ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={13}
+                      size={12}
                       color={isPaid ? colors.primary : colors.accent}
                     />
                     <Text style={styles.paidInfoText}>
@@ -414,7 +451,7 @@ export default function BillCollectionScreen() {
                     onPress={() => openCollect(bill)}
                     activeOpacity={0.85}
                   >
-                    <Ionicons name="cash" size={15} color="#ffffff" />
+                    <Ionicons name="cash" size={13} color="#ffffff" />
                     <Text style={styles.collectButtonText}>
                       {isPartial ? t('billCollection.addPayment') : t('billCollection.collectButton')}
                     </Text>
@@ -453,7 +490,7 @@ export default function BillCollectionScreen() {
                     {dropdownConfig.labelFor(option)}
                   </Text>
                   {dropdownConfig.value === option ? (
-                    <Ionicons name="checkmark" size={18} color={colors.primary} />
+                    <Ionicons name="checkmark" size={16} color={colors.primary} />
                   ) : null}
                 </TouchableOpacity>
               ))}
@@ -526,7 +563,7 @@ export default function BillCollectionScreen() {
                     >
                       <Ionicons
                         name={option.icon}
-                        size={14}
+                        size={13}
                         color={active ? '#ffffff' : colors.muted}
                       />
                       <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
@@ -621,7 +658,7 @@ export default function BillCollectionScreen() {
                 renderItem={({ item }) => (
                   <View style={styles.historyRow}>
                     <View style={styles.historyIconWrap}>
-                      <Ionicons name="arrow-down-circle" size={18} color={colors.primary} />
+                      <Ionicons name="arrow-down-circle" size={16} color={colors.primary} />
                     </View>
                     <View style={styles.historyTextWrap}>
                       <Text style={styles.historyAmount}>
@@ -658,78 +695,90 @@ export default function BillCollectionScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   page: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, paddingTop: 24, paddingBottom: 40 },
-  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 6 },
+  content: { padding: 14, paddingTop: 14, paddingBottom: 28 },
+
+  headingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
   iconWrap: {
-    width: 42, height: 42, borderRadius: 12,
+    width: 32, height: 32, borderRadius: 9,
     backgroundColor: `${colors.primary}1A`, alignItems: 'center', justifyContent: 'center',
   },
-  eyebrow: { color: colors.primary, fontSize: 11, fontWeight: '700', letterSpacing: 0.8 },
-  title: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 2 },
-  subtitle: { color: colors.muted, fontSize: 12.5, marginBottom: 18, marginLeft: 54 },
-  row: { flexDirection: 'row', gap: 12, marginBottom: 4 },
+  eyebrow: { color: colors.primary, fontSize: 9.5, fontWeight: '700', letterSpacing: 0.6 },
+  title: { color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 1 },
+  subtitle: { color: colors.muted, fontSize: 11, marginBottom: 10, marginLeft: 44 },
+
+  row: { flexDirection: 'row', gap: 8, marginBottom: 2 },
   rowItem: { flex: 1 },
-  label: { color: colors.text, fontSize: 12, fontWeight: '700', marginBottom: 7 },
+  label: { color: colors.text, fontSize: 10.5, fontWeight: '700', marginBottom: 5 },
   labelSoft: { color: colors.muted, fontWeight: '500' },
   dropdownButton: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface,
-    paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16,
+    borderWidth: 1, borderColor: colors.border, borderRadius: 9, backgroundColor: colors.surface,
+    paddingHorizontal: 11, paddingVertical: 10, marginBottom: 10,
   },
-  dropdownValue: { fontSize: 14, color: colors.text, fontWeight: '600' },
-  summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  dropdownValue: { fontSize: 12.5, color: colors.text, fontWeight: '600' },
+
+  summaryRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   summaryPill: {
     flex: 1, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
-    borderRadius: 12, padding: 14,
+    borderRadius: 10, padding: 10,
   },
-  summaryLabel: { color: colors.muted, fontSize: 11, fontWeight: '600', marginBottom: 4 },
-  summaryValue: { color: colors.text, fontSize: 17, fontWeight: '800' },
-  centerBox: { paddingVertical: 30, alignItems: 'center' },
+  summaryLabel: { color: colors.muted, fontSize: 9.5, fontWeight: '600', marginBottom: 3 },
+  summaryValue: { color: colors.text, fontSize: 14, fontWeight: '800' },
+
+  searchWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    borderWidth: 1, borderColor: colors.border, borderRadius: 9, backgroundColor: colors.surface,
+    paddingHorizontal: 10, paddingVertical: 9, marginBottom: 10,
+  },
+  searchInput: { flex: 1, fontSize: 12, color: colors.text, padding: 0 },
+
+  centerBox: { paddingVertical: 24, alignItems: 'center' },
   emptyCard: {
-    backgroundColor: colors.surface, borderRadius: 16, padding: 24, alignItems: 'center',
+    backgroundColor: colors.surface, borderRadius: 10, padding: 18, alignItems: 'center',
   },
-  emptyText: { color: colors.muted, fontSize: 13, textAlign: 'center', paddingVertical: 16 },
+  emptyText: { color: colors.muted, fontSize: 11.5, textAlign: 'center', paddingVertical: 10 },
+
   billCard: {
-    backgroundColor: colors.surface, borderRadius: 14, padding: 14, marginBottom: 10,
+    backgroundColor: colors.surface, borderRadius: 10, padding: 10, marginBottom: 6,
   },
   billHeaderRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3,
   },
-  billTenantName: { color: colors.text, fontSize: 14, fontWeight: '700', flex: 1 },
-  statusPill: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 3, marginLeft: 8 },
+  billTenantName: { color: colors.text, fontSize: 12.5, fontWeight: '700', flex: 1 },
+  statusPill: { borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2, marginLeft: 6 },
   statusPillPaid: { backgroundColor: `${colors.primary}1A` },
   statusPillPartial: { backgroundColor: `${colors.accent}1A` },
   statusPillDue: { backgroundColor: `${colors.error}14` },
-  statusPillText: { fontSize: 10.5, fontWeight: '700' },
-  billLocation: { color: colors.muted, fontSize: 12, marginBottom: 6 },
+  statusPillText: { fontSize: 9, fontWeight: '700' },
+  billLocation: { color: colors.muted, fontSize: 10.5, marginBottom: 5 },
   amountsRow: {
-    flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10,
+    flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6,
   },
-  billAmount: { color: colors.text, fontSize: 17, fontWeight: '800' },
-  remainingText: { color: colors.accent, fontSize: 11.5, fontWeight: '700' },
-  paidInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  paidInfoText: { color: colors.muted, fontSize: 11.5, flex: 1 },
-  viewHistoryLink: { color: colors.primary, fontSize: 11.5, fontWeight: '700' },
+  billAmount: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  remainingText: { color: colors.accent, fontSize: 10, fontWeight: '700' },
+  paidInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
+  paidInfoText: { color: colors.muted, fontSize: 10, flex: 1 },
+  viewHistoryLink: { color: colors.primary, fontSize: 10, fontWeight: '700' },
   collectButton: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 11,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    backgroundColor: colors.primary, borderRadius: 9, paddingVertical: 9,
   },
-  collectButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
+  collectButtonText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
 
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', paddingHorizontal: 40,
   },
-  optionsCard: { backgroundColor: '#ffffff', borderRadius: 14, paddingVertical: 8 },
+  optionsCard: { backgroundColor: '#ffffff', borderRadius: 12, paddingVertical: 6 },
   optionsHeading: {
-    color: colors.muted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5,
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6,
+    color: colors.muted, fontSize: 10, fontWeight: '700', letterSpacing: 0.4,
+    paddingHorizontal: 14, paddingTop: 7, paddingBottom: 5,
   },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 13,
+    paddingHorizontal: 14, paddingVertical: 11,
   },
   optionDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
-  optionLabel: { fontSize: 14, color: colors.text, fontWeight: '500' },
+  optionLabel: { fontSize: 12.5, color: colors.text, fontWeight: '500' },
   optionLabelActive: { color: colors.primary, fontWeight: '700' },
 
   sheetOverlay: {
@@ -737,66 +786,66 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 30,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 9,
+    paddingBottom: 24,
     maxHeight: '86%',
   },
   sheetGrabber: {
-    width: 38, height: 4, borderRadius: 99, backgroundColor: colors.border,
-    alignSelf: 'center', marginBottom: 14,
+    width: 34, height: 4, borderRadius: 99, backgroundColor: colors.border,
+    alignSelf: 'center', marginBottom: 11,
   },
-  sheetTitle: { fontSize: 16, fontWeight: '800', color: colors.text, marginBottom: 4 },
-  sheetSub: { fontSize: 12, color: colors.muted, marginBottom: 16, lineHeight: 17 },
+  sheetTitle: { fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: 3 },
+  sheetSub: { fontSize: 11, color: colors.muted, marginBottom: 12, lineHeight: 15 },
   sheetTenantRow: {
-    backgroundColor: colors.bg, borderRadius: 10, padding: 12, marginBottom: 12,
+    backgroundColor: colors.bg, borderRadius: 9, padding: 10, marginBottom: 10,
   },
-  sheetTenantName: { color: colors.text, fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  sheetTenantLocation: { color: colors.muted, fontSize: 12 },
+  sheetTenantName: { color: colors.text, fontSize: 12.5, fontWeight: '700', marginBottom: 2 },
+  sheetTenantLocation: { color: colors.muted, fontSize: 10.5 },
   sheetStatsRow: {
-    flexDirection: 'row', gap: 8, marginBottom: 18,
+    flexDirection: 'row', gap: 7, marginBottom: 14,
   },
   sheetStatItem: {
-    flex: 1, backgroundColor: colors.bg, borderRadius: 10, padding: 10, alignItems: 'center',
+    flex: 1, backgroundColor: colors.bg, borderRadius: 9, padding: 8, alignItems: 'center',
   },
-  sheetStatLabel: { color: colors.muted, fontSize: 10, fontWeight: '600', marginBottom: 3, textAlign: 'center' },
-  sheetStatValue: { color: colors.text, fontSize: 13, fontWeight: '800' },
+  sheetStatLabel: { color: colors.muted, fontSize: 9, fontWeight: '600', marginBottom: 2, textAlign: 'center' },
+  sheetStatValue: { color: colors.text, fontSize: 12, fontWeight: '800' },
   chipRow: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18,
+    flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 14,
   },
   chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
-    borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 16, paddingHorizontal: 10, paddingVertical: 7,
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipLabel: { color: colors.muted, fontSize: 12, fontWeight: '600' },
+  chipLabel: { color: colors.muted, fontSize: 11, fontWeight: '600' },
   chipLabelActive: { color: '#ffffff' },
   input: {
-    borderWidth: 1, borderColor: colors.border, borderRadius: 10, backgroundColor: colors.surface,
-    paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: colors.text, marginBottom: 8,
+    borderWidth: 1, borderColor: colors.border, borderRadius: 9, backgroundColor: colors.surface,
+    paddingHorizontal: 12, paddingVertical: 11, fontSize: 13, color: colors.text, marginBottom: 7,
   },
   remainingAfterText: {
-    color: colors.muted, fontSize: 11.5, marginBottom: 18, fontWeight: '600',
+    color: colors.muted, fontSize: 10.5, marginBottom: 14, fontWeight: '600',
   },
   saveButton: {
-    backgroundColor: colors.primary, borderRadius: 10, paddingVertical: 14,
-    alignItems: 'center', justifyContent: 'center', marginTop: 8,
+    backgroundColor: colors.primary, borderRadius: 9, paddingVertical: 12,
+    alignItems: 'center', justifyContent: 'center', marginTop: 6,
   },
   saveButtonDisabled: { opacity: 0.6 },
-  saveButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+  saveButtonText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
 
   historyListContent: { paddingBottom: 4 },
-  historyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 14 },
+  historyRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 11 },
   historyRowDivider: { height: 1, backgroundColor: colors.border },
   historyIconWrap: {
-    width: 30, height: 30, borderRadius: 15, backgroundColor: `${colors.primary}1A`,
+    width: 26, height: 26, borderRadius: 13, backgroundColor: `${colors.primary}1A`,
     alignItems: 'center', justifyContent: 'center',
   },
   historyTextWrap: { flex: 1 },
-  historyAmount: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  historyMeta: { color: colors.muted, fontSize: 11.5, marginTop: 2 },
-  historyRemarks: { color: colors.muted, fontSize: 11, fontStyle: 'italic', marginTop: 2 },
+  historyAmount: { color: colors.text, fontSize: 12.5, fontWeight: '700' },
+  historyMeta: { color: colors.muted, fontSize: 10.5, marginTop: 2 },
+  historyRemarks: { color: colors.muted, fontSize: 10, fontStyle: 'italic', marginTop: 2 },
 });

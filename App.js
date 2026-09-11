@@ -24,13 +24,14 @@ import BillGenerateScreen from './screens/BillGenerateScreen';
 import ExploreScreen from './screens/ExploreScreen';
 import { LanguageProvider, useLanguage } from './providers/LanguageProvider';
 import BillCollectionScreen from './screens/BillCollectionScreen';
+import { LogoutConfirmProvider } from './providers/LogoutConfirmProvider';
 
 import { clearAllScrollOffsets } from './utils/scrollMemory';
 
 import ExpenseListScreen from './screens/ExpenseListScreen';
 import ExpenseCreateScreen from './screens/ExpenseCreateScreen';
 import ReportScreen from './screens/ReportScreen';
-
+import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 
 const titles = Object.fromEntries(menuItems.map((item) => [item.key, item.label]));
 const MIN_SPLASH_DURATION = 1400;
@@ -128,10 +129,10 @@ function MainApp() {
     if (screen === 'create-bill') {
       return <BillGenerateScreen onNavigate={handleNavigate} />;
     }
-        if (screen === 'bill-collection') {
+    if (screen === 'bill-collection') {
       return <BillCollectionScreen onNavigate={handleNavigate} />;
     }
-        if (screen === 'expense-list') {
+    if (screen === 'expense-list') {
       return <ExpenseListScreen onNavigate={handleNavigate} />;
     }
     if (screen === 'add-expense') {
@@ -217,6 +218,10 @@ function RootNavigator() {
     setAuthStack((prev) => [...prev, screenKey]);
   }
 
+  function goBackAuthScreen() {
+    setAuthStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
+  }
+
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (loginData) return false; // MainApp has its own back handler
@@ -230,7 +235,7 @@ function RootNavigator() {
 
       // Otherwise pop the auth-flow stack back to the previous screen.
       if (authStack.length > 1) {
-        setAuthStack((prev) => prev.slice(0, -1));
+        goBackAuthScreen();
         return true;
       }
 
@@ -266,8 +271,18 @@ function RootNavigator() {
     return <RegistrationScreen onNavigateToLogin={() => goToAuthScreen('login')} />;
   }
 
-  return <LoginScreen onNavigateToRegister={() => goToAuthScreen('register')} />;
+  if (authScreen === 'forgot-password') {
+    return <ForgotPasswordScreen onBackToLogin={goBackAuthScreen} />;
+  }
+
+  return (
+    <LoginScreen
+      onNavigateToRegister={() => goToAuthScreen('register')}
+      onForgotPassword={() => goToAuthScreen('forgot-password')}
+    />
+  );
 }
+
 function AuthWithLanguageReset({ children }) {
   const { resetLanguage } = useLanguage();
   function handleLogout() {
@@ -276,16 +291,19 @@ function AuthWithLanguageReset({ children }) {
   }
   return <AuthProvider onLogout={handleLogout}>{children}</AuthProvider>;
 }
+
 export default function App() {
   return (
     <SafeAreaProvider>
-       <LanguageProvider>
-          <AuthWithLanguageReset>
-          <ActivityTracker>
-          <RootNavigator />
-        </ActivityTracker>
-      </AuthWithLanguageReset>
-       </LanguageProvider>
+      <LanguageProvider>
+        <AuthWithLanguageReset>
+          <LogoutConfirmProvider>
+            <ActivityTracker>
+              <RootNavigator />
+            </ActivityTracker>
+          </LogoutConfirmProvider>
+        </AuthWithLanguageReset>
+      </LanguageProvider>
     </SafeAreaProvider>
   );
 }

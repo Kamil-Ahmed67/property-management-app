@@ -1,43 +1,34 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Animated,
-  Easing,
-  ImageBackground,
-  Platform,
-} from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing, Platform, Image } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import Svg, { Path, Circle, Rect, G } from 'react-native-svg';
 import { Coordinates, CalculationMethod, Madhab, PrayerTimes, SunnahTimes } from 'adhan';
 import { useLanguage } from '../providers/LanguageProvider';
 import { colors } from '../theme';
-
-/* Background artwork */
-let MOSQUE_ART = null;
-try {
-  MOSQUE_ART = require('../assets/images/mosque-skyline2.png');
-} catch (e) {
-  MOSQUE_ART = null;
-}
-
-// Dhaka, Bangladesh — swap for real coordinates (expo-location) if needed.
+const MOSQUE_ART = require('../assets/images/mosque-skyline2.png');
+/* ------------------------------------------------------------------ *
+ * Location + calculation method
+ * ------------------------------------------------------------------ *
+ * Dhaka, Bangladesh — swap for live GPS coordinates (expo-location) if
+ * the app should support other cities. Karachi method + Hanafi madhab
+ * is the standard preset used by most Bangladeshi prayer-time apps and
+ * matches published Dhaka timetables to within a minute.
+ */
 const LOCATION_COORDINATES = new Coordinates(23.8103, 90.4125);
 
-// Karachi method + Hanafi Asr — closest standard preset for Bangladesh.
 function getCalculationParams() {
   const params = CalculationMethod.Karachi();
   params.madhab = Madhab.Hanafi;
   return params;
 }
 
-// Locale tag used for every date/time/number the card renders, so Bengali
-// gets Bengali numerals and month names without any manual digit mapping.
 function localeFor(lang) {
   return lang === 'bn' ? 'bn-BD' : 'en-US';
 }
 
-// Standard tabular ("Kuwaiti algorithm") Gregorian -> Hijri conversion.
+/* ------------------------------------------------------------------ *
+ * Hijri conversion — standard tabular ("Kuwaiti algorithm")
+ * ------------------------------------------------------------------ */
 function gregorianToHijri(date) {
   const day = date.getDate();
   let month = date.getMonth() + 1;
@@ -70,139 +61,131 @@ function gregorianToHijri(date) {
     29;
 
   const hMonth = Math.floor((24 * l3) / 709);
-  const hDay = l3 - Math.floor((709 * hMonth) / 24);
+  const hDay = Math.floor(l3 - Math.floor((709 * hMonth) / 24));
   const hYear = 30 * n + j - 30;
 
   return { day: hDay, month: hMonth, year: hYear };
 }
 
-// Approximate Bengali six-season calendar, mapped by Gregorian month.
-// Returns a translation key so the label follows the active language.
-function getSeasonKey(date) {
-  const month = date.getMonth(); // 0 = Jan
-  if (month === 3 || month === 4) return 'season.summer';
-  if (month === 5 || month === 6) return 'season.monsoon';
-  if (month === 7 || month === 8) return 'season.autumn';
-  if (month === 9 || month === 10) return 'season.lateAutumn';
-  if (month === 11 || month === 0) return 'season.winter';
-  return 'season.spring';
-}
+/* ------------------------------------------------------------------ *
+ * Waqt metadata — icon + the exact Bengali/English phrasing shown in
+ * the card. Bengali possessive suffixes ("-এর", "-র") differ per word
+ * ending, so these composed phrases are kept as direct translations
+ * here rather than built at runtime from a single root word. If the
+ * app's LanguageProvider should own these strings instead, move this
+ * table into the translation files under matching keys (e.g.
+ * `prayer.fajrTime` / `prayer.fajrEnding`) and swap the lookups below
+ * for t('prayer.fajrTime') etc.
+ * ------------------------------------------------------------------ */
+const WAQT_META = {
+  tahajjud: {
+    icon: (props) => <MaterialCommunityIcons name="star-crescent" {...props} />,
+    timeLabel: { bn: 'তাহাজ্জুদের সময়', en: 'Tahajjud Time' },
+    endingLabel: { bn: 'তাহাজ্জুদ শেষ হতে', en: 'Time left until Tahajjud ends' },
+  },
+  fajr: {
+    icon: (props) => <MaterialCommunityIcons name="mosque" {...props} />,
+    timeLabel: { bn: 'ফজরের সময়', en: 'Fajr Time' },
+    endingLabel: { bn: 'ফজরের শেষ হতে', en: 'Time left until Fajr ends' },
+  },
+  ishraq: {
+    icon: (props) => <MaterialCommunityIcons name="weather-sunset-up" {...props} />,
+    timeLabel: { bn: 'যোহরের অপেক্ষা', en: 'Waiting for Dhuhr' },
+    endingLabel: { bn: 'যোহর শুরু হতে', en: 'Time left until Dhuhr begins' },
+  },
+  dhuhr: {
+    icon: (props) => <MaterialCommunityIcons name="weather-sunny" {...props} />,
+    timeLabel: { bn: 'যোহরের সময়', en: 'Dhuhr Time' },
+    endingLabel: { bn: 'যোহরের শেষ হতে', en: 'Time left until Dhuhr ends' },
+  },
+  asr: {
+    icon: (props) => <MaterialCommunityIcons name="weather-sunset" {...props} />,
+    timeLabel: { bn: 'আসরের সময়', en: 'Asr Time' },
+    endingLabel: { bn: 'আসরের শেষ হতে', en: 'Time left until Asr ends' },
+  },
+  maghrib: {
+    icon: (props) => <MaterialCommunityIcons name="weather-sunset-down" {...props} />,
+    timeLabel: { bn: 'মাগরিবের সময়', en: 'Maghrib Time' },
+    endingLabel: { bn: 'মাগরিবের শেষ হতে', en: 'Time left until Maghrib ends' },
+  },
+  isha: {
+    icon: (props) => <Ionicons name="moon" {...props} />,
+    timeLabel: { bn: 'এশার সময়', en: 'Isha Time' },
+    endingLabel: { bn: 'এশার শেষ হতে', en: 'Time left until Isha ends' },
+  },
+};
 
-function formatTime(date, lang) {
+const LOCATION_LABEL = { bn: 'ঢাকা, বাংলাদেশ', en: 'Dhaka, Bangladesh' };
+const COUNTDOWN_WORDS = {
+  bn: { hour: 'ঘণ্টা', minute: 'মিনিট', remaining: 'বাকি' },
+  en: { hour: 'hr', minute: 'min', remaining: 'left' },
+};
+
+/* ------------------------------------------------------------------ *
+ * Formatting helpers
+ * ------------------------------------------------------------------ *
+ * Clock times and the countdown always render with Latin numerals and
+ * English AM/PM (matching standard Bangladeshi prayer-app convention),
+ * while the Hijri/Gregorian date line uses Bengali numerals and month/
+ * weekday names when the active language is Bengali.
+ */
+function formatTime(date) {
   if (!date || Number.isNaN(date.getTime?.())) return '--:--';
-  return date.toLocaleTimeString(localeFor(lang), {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
-function formatClock(date, lang) {
-  return date.toLocaleTimeString(localeFor(lang), {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
-function formatShort(date, lang) {
-  if (!date) return '--:--';
-  return date.toLocaleTimeString(localeFor(lang), {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-}
-
-function formatGap(ms, lang, t) {
+function formatCountdown(ms, lang) {
+  const words = COUNTDOWN_WORDS[lang] || COUNTDOWN_WORDS.en;
   const totalMinutes = Math.max(0, Math.floor(ms / 60000));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  const num = (value) => value.toLocaleString(localeFor(lang));
-  if (hours <= 0) return `${num(minutes)} ${t('prayer.min')}`;
-  return `${num(hours)} ${t('prayer.hr')} ${num(minutes)} ${t('prayer.min')}`;
-}
-
-// Tahajjud window (last third of the night -> Fajr) — kept for the Fajr /
-// sunrise / sunset readouts on the right.
-function computeTahajjudWindow(now) {
-  const params = getCalculationParams();
-
-  const today = new Date(now);
-  const todayPrayerTimes = new PrayerTimes(LOCATION_COORDINATES, today, params);
-
-  if (now < todayPrayerTimes.fajr) {
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayPrayerTimes = new PrayerTimes(LOCATION_COORDINATES, yesterday, params);
-    const sunnah = new SunnahTimes(yesterdayPrayerTimes);
-    return {
-      fajr: todayPrayerTimes.fajr,
-      sunrise: todayPrayerTimes.sunrise,
-      sunset: todayPrayerTimes.maghrib,
-      windowStart: sunnah.lastThirdOfTheNight,
-      windowEnd: todayPrayerTimes.fajr,
-    };
-  }
-
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowPrayerTimes = new PrayerTimes(LOCATION_COORDINATES, tomorrow, params);
-  const sunnah = new SunnahTimes(todayPrayerTimes);
-  return {
-    fajr: tomorrowPrayerTimes.fajr,
-    sunrise: todayPrayerTimes.sunrise,
-    sunset: todayPrayerTimes.maghrib,
-    windowStart: sunnah.lastThirdOfTheNight,
-    windowEnd: tomorrowPrayerTimes.fajr,
-  };
+  if (hours <= 0) return `${minutes} ${words.minute} ${words.remaining}`;
+  return `${hours} ${words.hour} ${minutes} ${words.minute} ${words.remaining}`;
 }
 
 /* ------------------------------------------------------------------ *
- * Real upcoming waqt
+ * Full waqt timeline
  * ------------------------------------------------------------------ *
- * Builds one ordered timeline of waqt entry times spanning yesterday →
- * tomorrow (Tahajjud + the five daily prayers), then picks the entry that
- * is still ahead of "now" plus the one currently running. Entries carry a
- * translation KEY rather than a fixed label, so the timeline itself is
- * language-agnostic and only renders in the active language.
- */
-const DAILY_PRAYERS = [
-  ['fajr', 'prayer.fajr'],
-  ['dhuhr', 'prayer.dhuhr'],
-  ['asr', 'prayer.asr'],
-  ['maghrib', 'prayer.maghrib'],
-  ['isha', 'prayer.isha'],
-];
-
-function buildWaqtTimeline(now) {
+ * Builds every named period (Tahajjud, Fajr, the sunrise→Dhuhr gap,
+ * Dhuhr, Asr, Maghrib, Isha) across yesterday/today/tomorrow, then
+ * returns whichever period "now" currently falls inside. Each period
+ * carries its own start and end instant, so the card can show an
+ * accurate time range and an accurate countdown to when it ends.
+ * ------------------------------------------------------------------ */
+function buildDayPeriods(dayDate) {
   const params = getCalculationParams();
-  const dayTimes = (offset) => {
-    const d = new Date(now);
+  const at = (offset) => {
+    const d = new Date(dayDate);
     d.setDate(d.getDate() + offset);
     return new PrayerTimes(LOCATION_COORDINATES, d, params);
   };
 
-  const yesterday = dayTimes(-1);
-  const today = dayTimes(0);
-  const tomorrow = dayTimes(1);
+  const prev = at(-1);
+  const curr = at(0);
 
-  const entries = [];
-  const push = (labelKey, time) => {
-    if (time && !Number.isNaN(new Date(time).getTime())) entries.push({ labelKey, time });
-  };
+  const tahajjudStart = new SunnahTimes(prev).lastThirdOfTheNight;
+  const ishaEnd = new SunnahTimes(curr).lastThirdOfTheNight; // -> tomorrow's Tahajjud start
 
-  push('prayer.isha', yesterday.isha);
-  push('prayer.tahajjud', new SunnahTimes(yesterday).lastThirdOfTheNight);
-  DAILY_PRAYERS.forEach(([key, labelKey]) => push(labelKey, today[key]));
-  push('prayer.tahajjud', new SunnahTimes(today).lastThirdOfTheNight);
-  DAILY_PRAYERS.forEach(([key, labelKey]) => push(labelKey, tomorrow[key]));
+  return [
+    { id: 'tahajjud', start: tahajjudStart, end: curr.fajr },
+    { id: 'fajr', start: curr.fajr, end: curr.sunrise },
+    { id: 'ishraq', start: curr.sunrise, end: curr.dhuhr },
+    { id: 'dhuhr', start: curr.dhuhr, end: curr.asr },
+    { id: 'asr', start: curr.asr, end: curr.maghrib },
+    { id: 'maghrib', start: curr.maghrib, end: curr.isha },
+    { id: 'isha', start: curr.isha, end: ishaEnd },
+  ];
+}
 
-  entries.sort((a, b) => a.time - b.time);
+function findCurrentPeriod(now) {
+  const candidates = [
+    ...buildDayPeriods(new Date(now.getTime() - 86400000)),
+    ...buildDayPeriods(now),
+    ...buildDayPeriods(new Date(now.getTime() + 86400000)),
+  ].sort((a, b) => a.start - b.start);
 
-  let index = entries.findIndex((e) => e.time > now);
-  if (index < 1) index = 1; // defensive: never fall off either end
-  return { current: entries[index - 1], upcoming: entries[index] };
+  const match = candidates.find((p) => now >= p.start && now < p.end);
+  return match || candidates[candidates.length - 1];
 }
 
 /* ------------------------------------------------------------------ */
@@ -210,7 +193,6 @@ function buildWaqtTimeline(now) {
 export default function PrayerTimesCard() {
   const { t, lang } = useLanguage();
   const [now, setNow] = useState(() => new Date());
-  const [trackWidth, setTrackWidth] = useState(0);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -218,8 +200,6 @@ export default function PrayerTimesCard() {
   }, []);
 
   const enter = useRef(new Animated.Value(0)).current;
-  const shimmer = useRef(new Animated.Value(0)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -229,62 +209,25 @@ export default function PrayerTimesCard() {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
+  }, [enter]);
 
-    const shimmerLoop = Animated.loop(
-      Animated.timing(shimmer, {
-        toValue: 1,
-        duration: 2600,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      })
-    );
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1000,
-          easing: Easing.in(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    shimmerLoop.start();
-    pulseLoop.start();
-    return () => {
-      shimmerLoop.stop();
-      pulseLoop.stop();
-    };
-  }, [enter, shimmer, pulse]);
-
-  // Recompute astronomy once a minute; the second tick drives the clock only.
+  // Recompute astronomy once a minute; the second tick drives the clock/countdown only.
   const minuteKey = Math.floor(now.getTime() / 60000);
-  const tahajjudWindow = useMemo(() => computeTahajjudWindow(now), [minuteKey]);
-  const waqt = useMemo(() => buildWaqtTimeline(now), [minuteKey]);
+  const period = useMemo(() => findCurrentPeriod(now), [minuteKey]);
   const hijri = useMemo(() => gregorianToHijri(now), [minuteKey]);
-  const seasonKey = useMemo(() => getSeasonKey(now), [minuteKey]);
 
-  const dayName = now.toLocaleDateString(localeFor(lang), { weekday: 'long' });
-  const gregorianDate = now.toLocaleDateString(localeFor(lang), {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-  const hijriDay = hijri.day.toLocaleString(localeFor(lang));
-  const hijriYear = hijri.year.toLocaleString(localeFor(lang));
+  const meta = WAQT_META[period.id];
+  const localeTag = localeFor(lang);
 
-  const currentWaqt = waqt.current;
-  const upcomingWaqt = waqt.upcoming;
+  const dayName = now.toLocaleDateString(localeTag, { weekday: 'long' });
+  const gregorianDate = now.toLocaleDateString(localeTag, { day: 'numeric', month: 'long', year: 'numeric' });
+  const hijriMonthName = t ? t(`hijri.${hijri.month}`) : '';
+  const hijriDay = hijri.day.toLocaleString(localeTag);
+  const hijriYear = hijri.year.toLocaleString(localeTag);
 
-  // Progress across the running waqt, from its start to the next one.
-  const totalWindowMs = Math.max(1, upcomingWaqt.time - currentWaqt.time);
-  const progress = Math.min(1, Math.max(0, (now - currentWaqt.time) / totalWindowMs));
+  const totalWindowMs = Math.max(1, period.end - period.start);
+  const progress = Math.min(1, Math.max(0, (now - period.start) / totalWindowMs));
+  const remainingMs = Math.max(0, period.end - now);
 
   useEffect(() => {
     Animated.timing(progressAnim, {
@@ -295,288 +238,272 @@ export default function PrayerTimesCard() {
     }).start();
   }, [progress, progressAnim]);
 
-  const statusLabel = `${t(currentWaqt.labelKey)} ${t('prayer.ongoing')}`;
-  const statusColor = colors.primary;
-  const countdownLabel = `${t(upcomingWaqt.labelKey)} ${t('prayer.to')} ${formatGap(
-    upcomingWaqt.time - now,
-    lang,
-    t
-  )}`;
-
-  const progressWidth = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
-  });
-  const shimmerX = shimmer.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-60, Math.max(trackWidth, 120)],
-  });
-  const dotScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] });
-  const dotOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] });
+  const progressWidth = progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
   const enterTranslate = enter.interpolate({ inputRange: [0, 1], outputRange: [14, 0] });
 
+  const timeLabel = meta.timeLabel[lang] || meta.timeLabel.en;
+  const endingLabel = meta.endingLabel[lang] || meta.endingLabel.en;
+  const locationLabel = LOCATION_LABEL[lang] || LOCATION_LABEL.en;
+  const countdownText = formatCountdown(remainingMs, lang);
+
   return (
-    <Animated.View
-      style={[styles.card, { opacity: enter, transform: [{ translateY: enterTranslate }] }]}
-    >
-      <Animated.View pointerEvents="none" style={[styles.artWrap]}>
-        {MOSQUE_ART ? (
-          <ImageBackground
-            source={MOSQUE_ART}
-            resizeMode="contain"
-            style={styles.art}
-            imageStyle={styles.artImage}
-          />
-        ) : null}
-        <View style={styles.moonGlow} />
-      </Animated.View>
+    <Animated.View style={[styles.card, { opacity: enter, transform: [{ translateY: enterTranslate }] }]}>
+      <DecorativeArt />
 
       <View style={styles.topRow}>
-        <View style={styles.hijriBlock}>
+        <View style={styles.leftBlock}>
           <View style={styles.iconBadge}>
-            <Ionicons name="moon" size={16} color="#ffffff" />
-          </View>
-          <View style={styles.hijriTextWrap}>
-            <View style={styles.hijriTitleRow}>
-              <Text style={styles.hijriDate} numberOfLines={1}>
-                {hijriDay} {t(`hijri.${hijri.month}`)} {hijriYear} {t('prayer.ah')}, {dayName}
-              </Text>
-              <Ionicons name="moon-outline" size={12} color={colors.primary} />
+  {meta.icon({ size: 32, color: colors.teal })}
+</View>
+          <View style={styles.leftTextWrap}>
+            <Text style={styles.waqtLabel} numberOfLines={1}>{timeLabel}</Text>
+            <Text style={styles.waqtRange} numberOfLines={1}>
+              {formatTime(period.start)} – {formatTime(period.end)}
+            </Text>
+            <View style={styles.locationRow}>
+              <Ionicons name="location" size={13} color={colors.teal} />
+              <Text style={styles.locationText} numberOfLines={1}>{locationLabel}</Text>
             </View>
-            <Text style={styles.gregorianDate} numberOfLines={1}>
-              {gregorianDate} · {t('prayer.location')} · {t(seasonKey)}
+          </View>
+        </View>
+
+        <View style={styles.rightBlock}>
+          <View style={styles.dateRow}>
+            <View style={styles.calendarBadge}>
+              <Ionicons name="calendar" size={11} color="#ffffff" />
+            </View>
+            <Text style={styles.hijriText} numberOfLines={1}>
+              {hijriDay} {hijriMonthName}, {hijriYear} {t ? t('prayer.ah') : 'AH'}
             </Text>
           </View>
-        </View>
-      </View>
-
-     <View style={styles.divider}>
-  <View style={styles.dividerLeft} />
-  <View style={styles.dividerCenter} />
-  <View style={styles.dividerRight} />
-</View>
-
-      <View style={styles.clockPillRow}>
-        <View style={styles.clockPill}>
-          <Ionicons name="moon" size={11} color={colors.primary} />
-          <Text style={styles.clockText}>{formatClock(now, lang)}</Text>
-        </View>
-      </View>
-
-      <View style={styles.timesRow}>
-        {/* LEFT: the real upcoming waqt for the current time */}
-        <View style={styles.timeItem}>
-          <View style={styles.timeLabelRow}>
-            <Text style={styles.timeLabel}>{t(upcomingWaqt.labelKey)}</Text>
-            <Ionicons name="checkmark-circle" size={13} color={colors.primary} />
-          </View>
-          <Text style={styles.timeValue}>{formatTime(upcomingWaqt.time, lang)}</Text>
-        </View>
-
-        <View style={styles.timeDivider} />
-
-        <View style={styles.timeItem}>
-          <Text style={styles.timeLabel}>{t('prayer.fajr')}</Text>
-          <Text style={styles.timeValue}>{formatTime(tahajjudWindow.fajr, lang)}</Text>
-        </View>
-      </View>
-
-      <View style={styles.sunRow}>
-        <View style={styles.sunItem}>
-          <View style={styles.sunIcon}>
-            <MaterialCommunityIcons name="weather-sunset-up" size={13} color={colors.accent} />
-          </View>
-          <Text style={styles.sunLabel}>{t('prayer.sunrise')}</Text>
-          <Text style={styles.sunValue}>{formatTime(tahajjudWindow.sunrise, lang)}</Text>
-        </View>
-        <View style={styles.sunItem}>
-          <Text style={styles.sunLabel}>{t('prayer.sunset')}</Text>
-          <Text style={styles.sunValue}>{formatTime(tahajjudWindow.sunset, lang)}</Text>
-          <View style={styles.sunIcon}>
-            <MaterialCommunityIcons name="weather-sunset-down" size={13} color={colors.accent} />
-          </View>
-        </View>
-      </View>
-
-      {/* <View style={styles.progressSection}>
-        <View style={styles.progressHeaderRow}>
-          <Text style={styles.progressLabel}>
-            {t(upcomingWaqt.labelKey)} {t('prayer.starts')}
+          <Text style={styles.gregorianText} numberOfLines={1}>
+            {gregorianDate}, {dayName}
           </Text>
-          <Text style={styles.progressValue}>{formatShort(upcomingWaqt.time, lang)}</Text>
         </View>
+      </View>
 
-        <View
-          style={styles.progressTrack}
-          onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-        >
-          <Animated.View style={[styles.progressFill, { width: progressWidth }]}>
-            <Animated.View style={[styles.shimmer, { transform: [{ translateX: shimmerX }] }]} />
-          </Animated.View>
-        </View>
+      <View style={styles.progressTrack}>
+        <Animated.View style={[styles.progressFill, { width: progressWidth }]} />
+      </View>
 
-        <View style={styles.statusRow}>
-          <View style={styles.statusLeft}>
-            <View style={styles.statusDotWrap}>
-              <Animated.View
-                style={[
-                  styles.statusHalo,
-                  {
-                    backgroundColor: statusColor,
-                    opacity: dotOpacity,
-                    transform: [{ scale: dotScale }],
-                  },
-                ]}
-              />
-              <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            </View>
-            <Text style={[styles.statusLabel, { color: statusColor }]}>{statusLabel}</Text>
-          </View>
-          <Text style={styles.countdownLabel}>{countdownLabel}</Text>
+      <Text style={styles.endingLabel}>{endingLabel}</Text>
+
+      <View style={styles.countdownRow}>
+        <View style={styles.clockBadge}>
+          <Ionicons name="time-outline" size={14} color={colors.teal} />
         </View>
-      </View> */}
+        <Text style={styles.countdownText}>{countdownText}</Text>
+      </View>
     </Animated.View>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Decorative artwork: a soft mosque-skyline silhouette bottom-right,
+ * a small crescent, and light corner flourishes top-left/top-right —
+ * drawn as vectors (react-native-svg) so no image asset is required.
+ * ------------------------------------------------------------------ */
+function DecorativeArt() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Top-left decorative flourish */}
+      <Svg
+        style={StyleSheet.absoluteFill}
+        viewBox="0 0 400 210"
+        pointerEvents="none"
+      >
+        {/* Crescent */}
+        <G opacity={0.55}>
+          <Path
+            d="M382 8 a10 10 0 1 0 0.4 19.9 a7.6 7.6 0 1 1 -0.4 -19.9 Z"
+            fill={colors.teal}
+          />
+        </G>
+      </Svg>
+
+      {/* Mosque image — bottom right */}
+      <Image
+        source={MOSQUE_ART}
+        resizeMode="contain"
+        style={styles.mosqueArtwork}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 18,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    overflow: 'hidden',
-    position: 'relative',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#14402a',
-        shadowOpacity: 0.14,
-        shadowRadius: 18,
-        shadowOffset: { width: 0, height: 10 },
-      },
-      android: { elevation: 3 },
-      default: {},
-    }),
-  },
-  artWrap: { position: 'absolute', top: -10, right: -6, width: 240, height: 130 },
-  art: { position: 'absolute', right: 8, bottom: 0, width: 210, height: 110 },
-  artImage: { opacity: 0.9 },
-  moonGlow: {
-    position: 'absolute',
-    right: 54,
-    top: 6,
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: colors.primary,
-    opacity: 0.07,
-  },
-  topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  hijriBlock: { flexDirection: 'row', alignItems: 'center', gap: 11, flex: 1, paddingRight: 10 },
-  iconBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hijriTextWrap: { flexShrink: 1 },
-  hijriTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
-  hijriDate: { color: colors.text, fontSize: 13.5, fontFamily: 'Manrope-Bold', flexShrink: 1 },
-  gregorianDate: { color: colors.muted, fontSize: 11, fontFamily: 'Manrope-Regular' },
-
-  divider: { height: 1, backgroundColor: 'transparent', marginTop: 22 },
-
-divider: { height: 1, backgroundColor:'transparent', marginTop: 22 },
-//   divider: {
-//   height: 1,
-//   marginTop: 22,
-//   flexDirection: 'row',
-// },
-
-// dividerLeft: {
-//   flex: 1,
-//  backgroundColor: colors.border
-// },
-// dividerCenter: {
-//   flex: 1,
-//   backgroundColor: colors.border
-// },
-
-// dividerRight: {
-//   flex: 1,
-//   backgroundColor: 'transparent',
-// },
-
-  clockPillRow: { flexDirection: 'row', justifyContent: 'center', marginTop: -13 },
-  clockPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 13,
-    paddingVertical: 5,
-    borderRadius: 999,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  clockText: { color: colors.text, fontSize: 12.5, fontFamily: 'Manrope-ExtraBold' },
-  timesRow: { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
-  timeItem: { flex: 1, alignItems: 'center', paddingVertical: 6 },
-  timeDivider: { width: 1, height: 32, backgroundColor: colors.border },
-  timeLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3 },
-  timeLabel: { color: colors.muted, fontSize: 11.5, fontFamily: 'Manrope-Medium', marginBottom: 3 },
-  timeValue: { color: colors.text, fontSize: 16, fontFamily: 'Manrope-ExtraBold' },
-  sunRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 14,
-    paddingHorizontal: 4,
-  },
-  sunItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  sunIcon: {
-    width: 20,
-    height: 20,
     borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(201,138,30,0.10)',
-  },
-  sunLabel: { color: colors.muted, fontSize: 11, fontFamily: 'Manrope-Regular' },
-  sunValue: { color: colors.text, fontSize: 11.5, fontFamily: 'Manrope-Bold' },
-  progressSection: {
-    marginTop: 16,
-    backgroundColor: colors.bg,
-    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 13,
-  },
-  progressHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 9 },
-  progressLabel: { color: colors.text, fontSize: 12.5, fontFamily: 'Manrope-Bold' },
-  progressValue: { color: colors.text, fontSize: 12.5, fontFamily: 'Manrope-ExtraBold' },
-  progressTrack: { height: 7, borderRadius: 999, backgroundColor: colors.border, overflow: 'hidden' },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: 999,
+    marginHorizontal: 12,
+    marginBottom: 12,
     overflow: 'hidden',
+    position: 'relative',
+
+    ...Platform.select({
+      ios: {
+        shadowColor: '#14402a',
+        shadowOpacity: 0.10,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+      },
+      android: {
+        elevation: 2,
+      },
+      default: {},
+    }),
   },
-  statusRow: {
+
+  topRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
+    gap: 6,
   },
-  statusLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  statusDotWrap: { width: 8, height: 8, alignItems: 'center', justifyContent: 'center' },
-  statusHalo: { position: 'absolute', width: 8, height: 8, borderRadius: 4 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusLabel: { fontSize: 11.5, fontFamily: 'Manrope-Bold' },
-  countdownLabel: { color: colors.muted, fontSize: 11.5, fontFamily: 'Manrope-Medium' },
+
+  leftBlock: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 5,
+    flex: 0.6,
+    minWidth: 0,
+  },
+
+iconBadge: {
+  width: 56,
+  height: 56,
+  borderRadius: 6,
+  backgroundColor: colors.badge || 'rgba(31,122,76,0.14)',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+},
+leftTextWrap: {
+  flex: 1,
+  height: 52,
+  justifyContent: 'center',
+  minWidth: 0,
+  paddingLeft: 2,
+},
+waqtLabel: {
+  color: colors.teal,
+  fontSize: 11,
+  fontFamily: 'Manrope-Bold',
+  marginBottom: 2,
+},
+
+waqtRange: {
+  color: colors.text,
+  fontSize: 13,
+  fontFamily: 'Manrope-ExtraBold',
+  letterSpacing: -0.2,
+  marginBottom: 3,
+},
+
+locationRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 3,
+},
+
+locationText: {
+  color: colors.teal,
+  fontSize: 10,
+  fontFamily: 'Manrope-Medium',
+  flexShrink: 1,
+},
+
+  rightBlock: {
+    flex: 0.4,
+    alignItems: 'flex-end',
+    minWidth: 0,
+  },
+
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+
+  calendarBadge: {
+    width: 13,
+    height: 13,
+    borderRadius: 4,
+    backgroundColor: colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+
+  hijriText: {
+    color: colors.text,
+    fontSize: 8,
+    fontFamily: 'Manrope-Bold',
+    flexShrink: 1,
+  },
+
+  gregorianText: {
+    color: colors.muted,
+    fontSize: 7.5,
+    fontFamily: 'Manrope-Medium',
+  },
+
+progressTrack: {
+  marginTop: 11,
+  height: 6,
+  width: 260,      
+  borderRadius: 3,
+  backgroundColor: colors.border,
+  overflow: 'hidden',
+  alignSelf: 'flex-start',
+},
+
+progressFill: {
+  height: '100%',
+  borderRadius: 3,
+  backgroundColor: colors.teal,
+},
+
+  endingLabel: {
+    marginTop: 9,
+    marginBottom: 3,
+    color: colors.text,
+    fontSize: 9,
+    fontFamily: 'Manrope-Bold',
+  },
+
+  countdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+
+  clockBadge: {
+    width: 21,
+    height: 21,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  countdownText: {
+    color: colors.text,
+    fontSize: 12.5,
+    fontFamily: 'Manrope-ExtraBold',
+  },
+
+  mosqueArtwork: {
+    position: 'absolute',
+    right: -8,
+    bottom: -12,
+    width: 220,
+    height: 98,
+    opacity: 0.80,
+  },
 });

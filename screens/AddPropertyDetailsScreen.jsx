@@ -311,10 +311,25 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
             {t('addDetails.groupLayout')} <Text style={styles.groupHeadingSoft}>{t('form.optional')}</Text>
           </Text>
 
-         <View style={styles.stepperGroup}>
-            <Stepper label={t('addDetails.room')} value={rooms} onChange={setRooms} />
-            <Stepper label={t('addDetails.bathroom')} value={bathrooms} onChange={setBathrooms} />
-            <Stepper label={t('addDetails.balcony')} value={balconies} onChange={setBalconies} />
+                  <View style={styles.stepperGroup}>
+            <Stepper
+              label={t('addDetails.room')}
+              value={rooms}
+              onChange={setRooms}
+              containerStyle={styles.stepperItem}
+            />
+            <Stepper
+              label={t('addDetails.bathroom')}
+              value={bathrooms}
+              onChange={setBathrooms}
+              containerStyle={styles.stepperItem}
+            />
+            <Stepper
+              label={t('addDetails.balcony')}
+              value={balconies}
+              onChange={setBalconies}
+              containerStyle={styles.stepperItem}
+            />
           </View>
 
           <View style={styles.divider} />
@@ -762,5 +777,13 @@ dropdownButton: {
   },
   optionLabelActive: {
     color: colors.primary,
+  },
+    stepperGroup: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  stepperItem: {
+    flex: 1,
+    marginBottom: 16,
   },
 });

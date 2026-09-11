@@ -5,8 +5,8 @@ import { useLanguage } from '../providers/LanguageProvider';
 import { colors } from '../theme';
 import config from '../config';
 
-import IncomeCard from '../components/IncomeCard';
-import CampaignBanner from '../components/CampaignBanner';
+// import IncomeCard from '../components/IncomeCard';
+// import CampaignBanner from '../components/CampaignBanner';
 import BillStatusRow from '../components/BillStatusRow';
 import SectionGrid from '../components/SectionGrid';
 import FeedbackCard from '../components/FeedbackCard';
@@ -22,11 +22,19 @@ const MONTH_VALUES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+const MONTH_KEYS = [
+  'month.january', 'month.february', 'month.march', 'month.april',
+  'month.may', 'month.june', 'month.july', 'month.august',
+  'month.september', 'month.october', 'month.november', 'month.december',
+];
+
 // Labels are translation KEYS — resolved via t() at render time so they
 // re-render in the new language the moment the toggle is pressed.
 const propertySection = [
   { key: 'manage-building', labelKey: 'section.manageBuilding', icon: 'business-outline' },
   { key: 'add-tenants', labelKey: 'section.addTenants', icon: 'person-add-outline' },
+  { key: 'notice', labelKey: 'section.notice', icon: 'megaphone-outline' },
+  { key: 'complain', labelKey: 'section.complain', icon: 'alert-circle-outline' },
 ];
 
 const utilitiesSection = [
@@ -51,11 +59,17 @@ export default function HomeScreen({ onNavigate }) {
   const { t } = useLanguage();
   const phone = loginData?.Phone || loginData?.phone || '';
   const scrollProps = useScrollMemory('home');
-  const [totalBilled, setTotalBilled] = useState(0);
   const [totalCollected, setTotalCollected] = useState(0);
-
+  const [totalExpense, setTotalExpense] = useState(0);
+  const [unitsCount, setUnitsCount] = useState(0);
+  const [expenseCount, setExpenseCount] = useState(0);
+  const [periodLabel, setPeriodLabel] = useState('');
   // SectionGrid expects { key, label, icon } — resolve labelKey -> label.
   const localize = (items) => items.map((item) => ({ ...item, label: t(item.labelKey) }));
+
+  function monthLabel(monthNumber) {
+    return t(MONTH_KEYS[monthNumber - 1]);
+  }
 
   useEffect(() => {
     if (!phone) return;
@@ -66,20 +80,30 @@ export default function HomeScreen({ onNavigate }) {
 
     (async () => {
       try {
-        const response = await fetch(
-          `${config.BMS_API}api/GetBillList?phone=${encodeURIComponent(phone)}&billMonth=${encodeURIComponent(billMonth)}&billYear=${encodeURIComponent(billYear)}`,
-          { headers: { TenantId: TENANT_ID } }
-        );
-        const data = await response.json().catch(() => null);
-        if (response.ok && data?.success) {
-          const bills = data.data || [];
-          setTotalBilled(bills.reduce((sum, b) => sum + (b.Amount || 0), 0));
-          setTotalCollected(bills.reduce((sum, b) => sum + (b.PaidAmount || 0), 0));
-        }
+        const [billRes, expenseRes] = await Promise.all([
+          fetch(
+            `${config.BMS_API}api/GetBillList?phone=${encodeURIComponent(phone)}&billMonth=${encodeURIComponent(billMonth)}&billYear=${encodeURIComponent(billYear)}`,
+            { headers: { TenantId: TENANT_ID } }
+          ).then((r) => r.json().catch(() => null)),
+          fetch(
+            `${config.BMS_API}api/GetExpenseList?phone=${encodeURIComponent(phone)}&expenseMonth=${now.getMonth() + 1}&expenseYear=${now.getFullYear()}`,
+            { headers: { TenantId: TENANT_ID } }
+          ).then((r) => r.json().catch(() => null)),
+        ]);
+
+        const bills = billRes?.success ? billRes.data || [] : [];
+        const expenses = expenseRes?.success ? expenseRes.data || [] : [];
+
+        setTotalCollected(bills.reduce((sum, b) => sum + (b.PaidAmount || 0), 0));
+        setUnitsCount(bills.length);
+        setTotalExpense(expenses.reduce((sum, e) => sum + (e.ExpenseAmount || 0), 0));
+        setExpenseCount(expenses.length);
+        setPeriodLabel(`${monthLabel(now.getMonth() + 1)} ${billYear}`);
       } catch (err) {
-        console.log('Failed to load this month\u2019s bill summary:', err.message);
+        console.log('Failed to load this month\u2019s financial summary:', err.message);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone]);
 
   return (
@@ -90,31 +114,33 @@ export default function HomeScreen({ onNavigate }) {
       <PrayerTimesCard />
       {/* <IncomeCard amount={11000} totalTenants={2} totalRooms={2} /> */}
 
-      <BillStatusRow totalDue={totalBilled} collected={totalCollected} />
+      <BillStatusRow
+        income={totalCollected}
+        expense={totalExpense}
+        periodLabel={periodLabel}
+        unitsCount={unitsCount}
+        expenseCount={expenseCount}
+      />
 
       <SectionGrid
         title={t('home.propertyManagement')}
-        accentColor={colors.primary}
-        accentSoft={colors.primarySoft}
         items={localize(propertySection)}
         onSelect={onNavigate}
+        paletteOffset={0}
       />
-      <CampaignBanner onSelect={onNavigate} />
-      <SectionGrid
+      {/* <CampaignBanner onSelect={onNavigate} /> */}
+       <SectionGrid
         title={t('home.finance')}
-        accentColor={colors.accent}
-        accentSoft={colors.accentSoft}
         items={localize(financeSection)}
         onSelect={onNavigate}
+        paletteOffset={1}
       />
-      <SectionGrid
+        <SectionGrid
         title={t('home.utilities')}
-        accentColor={colors.teal}
-        accentSoft={colors.tealSoft}
         items={localize(utilitiesSection)}
         onSelect={onNavigate}
+        paletteOffset={2}
       />
-
       <FeedbackCard onSubmit={() => onNavigate?.('feedback')} />
     </ScrollView>
   );
@@ -127,7 +153,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingTop: 18,
-    paddingBottom: 40,
+    paddingBottom: 15,
   },
   title: {
     color: colors.text,

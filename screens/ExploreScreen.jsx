@@ -18,7 +18,7 @@ import FindPropertyScreen from './FindPropertyScreen';
 import FindServiceScreen from './FindServiceScreen';
 
 const LOGO = require('../assets/images/logo.png');
-const BANNER_IMAGE = require('../assets/images/welcome4.png');
+const BANNER_IMAGE = require('../assets/images/banners/login-9.jpeg');
 
 const CATEGORY_CARDS = [
   {
@@ -26,33 +26,38 @@ const CATEGORY_CARDS = [
     title: 'আমার প্রপার্টি',
     subtitle: 'আপনার সম্পত্তি ব্যবস্থাপনা করুন',
     icon: 'home',
-    iconBg: `${colors.primary}1A`,
-    iconColor: colors.primary,
+    iconBg: '#E6F4EA',
+    iconColor: '#0F9D58',
+    arrowBg: '#E6F4EA',
+    arrowColor: '#0F9D58',
   },
   {
     key: 'find-property',
     title: 'প্রপার্টি খুঁজুন',
     subtitle: 'কেনা, বেচা বা ভাড়ার জন্য খুঁজুন',
     icon: 'search',
-    iconBg: '#EDE9FE',
-    iconColor: '#7C3AED',
+    iconBg: '#E8F0FE',
+    iconColor: '#1A73E8',
+    arrowBg: '#E8F0FE',
+    arrowColor: '#1A73E8',
   },
   {
     key: 'find-service',
     title: 'সার্ভিস খুঁজুন',
     subtitle: 'প্রয়োজনীয় সেবা খুঁজে নিন',
-    icon: 'gift-outline',
-    iconBg: `${colors.accent}1A`,
-    iconColor: colors.accent,
+    icon: 'construct-outline',
+    iconBg: '#F3E8FF',
+    iconColor: '#9333EA',
+    arrowBg: '#F3E8FF',
+    arrowColor: '#9333EA',
   },
 ];
 
 export default function ExploreScreen({ onRequireLogin }) {
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { height } = useWindowDimensions();
   const isSmallScreen = height < 700;
-  const isLargeScreen = height > 820;
-  const [view, setView] = useState('home'); // 'home' | 'my-property' | 'find-property' | 'find-service'
+  const [view, setView] = useState('home');
 
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -77,133 +82,98 @@ export default function ExploreScreen({ onRequireLogin }) {
 
   return (
     <View style={styles.container}>
-      {/* contentContainerStyle gets flexGrow:1 + minHeight = full window height, so
-          the box below always occupies exactly one screen. The hero banner is the
-          only flexible child (flex:1, capped by maxHeight) — it shrinks to soak up
-          whatever room the fixed rows (header/cards/list) don't use, so the layout
-          fits without scrolling on virtually every device. ScrollView only engages
-          as a safety net if a screen is so short the banner can't shrink any further. */}
       <ScrollView
         style={styles.page}
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: insets.top + (isSmallScreen ? 10 : 14),
-            paddingBottom: insets.bottom + (isSmallScreen ? 16 : 24),
-            minHeight: height,
-            flexGrow: 1,
-          },
-        ]}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.headerRow, isSmallScreen && styles.headerRowSmall]}>
-          <View style={styles.headerLeft}>
-            <Image source={LOGO} style={styles.logo} resizeMode="contain" />
-            <View>
-              <Text style={styles.brandName}>PropHub</Text>
-              <Text style={styles.brandTagline}>Your Home, Our Solution</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.loginButton} onPress={onRequireLogin} activeOpacity={0.85}>
-            <Ionicons name="log-in-outline" size={16} color="#ffffff" />
-            <Text style={styles.loginButtonLabel}>লগইন</Text>
-          </TouchableOpacity>
-        </View>
-{/* =========================================================
-    HERO BANNER
-========================================================= */}
-
-<View
-  style={[
-    styles.imageBanner,
-    {
-      maxHeight: isSmallScreen
-        ? width * 0.60
-        : isLargeScreen
-        ? width * 0.78
-        : width * 0.68,
-    },
-  ]}
->
-  <ImageBackground
-    source={BANNER_IMAGE}
-    style={styles.bannerBg}
-    imageStyle={styles.bannerBgImage}
-  >
-
-    {/* Soft overlay only on the left side */}
-    <View style={styles.bannerLeftOverlay} />
-
-    {/* TOP-LEFT TEXT */}
-    <View style={styles.bannerTextWrap}>
-      <Text style={styles.bannerTitle}>
-        Your Dream Home,{'\n'}
-        Our Solution
-      </Text>
-
-      <View style={styles.bannerDivider} />
-
-      <Text style={styles.bannerSubtitle}>
-        Search, rent, and manage{'\n'}
-        all in one place.
-      </Text>
-
-    </View>
-
-  </ImageBackground>
-</View>
-
-        {CATEGORY_CARDS.map((card) => (
-          <TouchableOpacity
-            key={card.key}
-            style={[styles.categoryCard, isSmallScreen && styles.categoryCardSmall]}
-            onPress={() =>
-              card.key === 'my-property' ? onRequireLogin() : setView(card.key)
-            }
-            activeOpacity={0.75}
+        {/* HERO BANNER */}
+        <View style={styles.imageBanner}>
+          <ImageBackground
+            source={BANNER_IMAGE}
+            style={styles.bannerBg}
+            imageStyle={styles.bannerBgImage}
           >
-            <View
-              style={[
-                styles.categoryIconWrap,
-                isSmallScreen && styles.categoryIconWrapSmall,
-                { backgroundColor: card.iconBg },
-              ]}
-            >
-              <Ionicons name={card.icon} size={24} color={card.iconColor} />
-            </View>
-            <View style={styles.categoryTextWrap}>
-              <Text style={styles.categoryTitle}>{card.title}</Text>
-              <Text style={styles.categorySubtitle}>{card.subtitle}</Text>
-            </View>
-            <View style={[styles.categoryArrowWrap, { backgroundColor: card.iconBg }]}>
-              <Ionicons name="chevron-forward" size={16} color={card.iconColor} />
-            </View>
-          </TouchableOpacity>
-        ))}
+            <View style={[styles.bannerOverlay, { paddingTop: insets.top + (isSmallScreen ? 8 : 12) }]}>
+              {/* Header */}
+              <View style={styles.headerRow}>
+                <View style={styles.headerLeft}>
+                  <Image source={LOGO} style={styles.logo} resizeMode="contain" />
+                  <View>
+                    <Text style={styles.brandName}>PropHub</Text>
+                    <Text style={styles.brandTagline}>Your Home, Our Solution</Text>
+                  </View>
+                </View>
 
-        {/* <View style={[styles.listCard, isSmallScreen && styles.listCardSmall]}>
-          <Text style={styles.listHeading}>আপনার প্রপার্টি বা সার্ভিস লিস্ট করুন</Text>
-          <Text style={styles.listSubheading}>
-            নতুন গ্রাহকদের কাছে পৌঁছান এবং আপনার সেবা প্রচার করুন
-          </Text>
-          <View style={styles.listButtonRow}>
-            <TouchableOpacity style={styles.listButton} onPress={onRequireLogin} activeOpacity={0.8}>
-              <Ionicons name="add-circle" size={16} color={colors.primary} />
-              <Text style={styles.listButtonLabel}>প্রপার্টি লিস্ট করুন</Text>
-            </TouchableOpacity>
+                <TouchableOpacity style={styles.loginButton} onPress={onRequireLogin} activeOpacity={0.85}>
+                  <Ionicons name="log-in-outline" size={16} color="#ffffff" />
+                  <Text style={styles.loginButtonLabel}>লগইন</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Banner Text */}
+              <View style={styles.bannerTextWrap}>
+                <Text style={styles.bannerTitle}>
+                  আপনার স্বপ্নের{'\n'}বাড়ি, আমাদের{'\n'}সমাধান
+                </Text>
+
+                <Text style={styles.bannerSubtitle}>
+                  বাড়ি, ভাড়াটিয়া, সোসাইটি বা সার্ভিস{'\n'}সবকিছু এখন এক প্ল্যাটফর্মে।
+                </Text>
+              </View>
+            </View>
+          </ImageBackground>
+        </View>
+
+        {/* MAIN BODY CONTENT */}
+        <View style={styles.bodyContent}>
+          {CATEGORY_CARDS.map((card) => (
             <TouchableOpacity
-              style={[styles.listButton, styles.listButtonAlt]}
+              key={card.key}
+              style={[styles.categoryCard, isSmallScreen && styles.categoryCardSmall]}
+              onPress={() =>
+                card.key === 'my-property' ? onRequireLogin() : setView(card.key)
+              }
+              activeOpacity={0.8}
+            >
+              <View style={[styles.categoryIconWrap, { backgroundColor: card.iconBg }]}>
+                <Ionicons name={card.icon} size={26} color={card.iconColor} />
+              </View>
+              
+              <View style={styles.categoryTextWrap}>
+                <Text style={styles.categoryTitle}>{card.title}</Text>
+                <Text style={styles.categorySubtitle}>{card.subtitle}</Text>
+              </View>
+
+              <View style={[styles.categoryArrowWrap, { backgroundColor: card.arrowBg }]}>
+                <Ionicons name="chevron-forward" size={16} color={card.arrowColor} />
+              </View>
+            </TouchableOpacity>
+          ))}
+
+          {/* BOTTOM PROMO CARD */}
+          <View style={styles.bottomListCard}>
+            <View style={styles.bottomListIconWrap}>
+              <Ionicons name="document-text-outline" size={24} color="#0F9D58" />
+            </View>
+
+            <View style={styles.bottomListTextWrap}>
+              <Text style={styles.bottomListTitle}>আপনার প্রপার্টি বা সার্ভিস লিস্ট করুন</Text>
+              <Text style={styles.bottomListSubtitle}>
+                নতুন গ্রাহকদের কাছে পৌঁছান এবং আপনার কাজ বাড়ান।
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.bottomListButton}
               onPress={onRequireLogin}
               activeOpacity={0.8}
             >
-              <Ionicons name="add-circle" size={16} color="#7C3AED" />
-              <Text style={[styles.listButtonLabel, { color: '#7C3AED' }]}>
-                সার্ভিস লিস্ট করুন
-              </Text>
+              <Ionicons name="add" size={16} color="#0F9D58" />
+              <Text style={styles.bottomListButtonText}>লিস্ট করুন</Text>
             </TouchableOpacity>
           </View>
-        </View> */}
+        </View>
       </ScrollView>
     </View>
   );
@@ -212,254 +182,173 @@ export default function ExploreScreen({ onRequireLogin }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#ffffff' },
   page: { flex: 1 },
-  content: { padding: 20 },
+
+  imageBanner: {
+    width: '100%',
+    aspectRatio: 1 / 0.95,
+    backgroundColor: '#F8FAF8',
+  },
+  bannerBg: {
+    flex: 1,
+    width: '100%',
+  },
+  bannerBgImage: {
+    resizeMode: 'cover',
+  },
+  bannerOverlay: {
+    flex: 1,
+    // justifyContent: 'space-between',
+    paddingBottom: 20,
+  },
 
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    paddingHorizontal: 20,
   },
-  headerRowSmall: { marginBottom: 12 },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  logo: { width: 34, height: 34, borderRadius: 9 },
+  logo: { width: 36, height: 36, borderRadius: 8 },
   brandName: {
-    color: colors.teal,
-    fontSize: 15,
+    color: '#0F5B46',
+    fontSize: 16,
     fontFamily: 'Manrope-ExtraBold',
     lineHeight: 18,
   },
   brandTagline: {
-    color: colors.muted,
+    color: '#6B7280',
     fontSize: 10,
     fontFamily: 'Manrope-Medium',
     lineHeight: 12,
-    marginTop: 1,
   },
   loginButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.primaryDark,
+    backgroundColor: '#0F9D58',
     borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
   },
   loginButtonLabel: {
     color: '#ffffff',
-    fontSize: 12.5,
+    fontSize: 13,
     fontFamily: 'Manrope-Bold',
   },
 
-  /* Hero banner wrap — flex:1 lets it soak up leftover space instead of a fixed
-     height, so it shrinks on short screens rather than pushing content off-screen. */
- /* =============================================================
-   HERO BANNER
-============================================================= */
-
-imageBanner: {
-  width: '100%',
-  flex: 1,
-
-  minHeight: 90,
-
-  marginBottom: 20,
-
-  borderRadius: 20,
-
-  overflow: 'hidden',
-
-  backgroundColor: '#f4f8fb',
-
-  shadowColor: '#7b8b98',
-  shadowOpacity: 0.10,
-  shadowRadius: 12,
-  shadowOffset: {
-    width: 0,
-    height: 4,
+bannerTextWrap: {
+  width: '60%',
+  paddingHorizontal: 20,
+  marginTop: 25, 
+},
+  bannerTitle: {
+    color: '#0F3025',
+    fontSize: 22,
+    lineHeight: 30,
+    fontFamily: 'Manrope-ExtraBold',
+    marginBottom: 8,
+  },
+  bannerSubtitle: {
+    color: '#4B5563',
+    fontSize: 11,
+    lineHeight: 16,
+    fontFamily: 'Manrope-Medium',
   },
 
-  elevation: 2,
-},
+  bodyContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    marginTop: -20,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+  },
 
-bannerBg: {
-  flex: 1,
-
-  width: '100%',
-
-  // IMPORTANT:
-  // This puts the content at the TOP
-  justifyContent: 'flex-start',
-
-  alignItems: 'flex-start',
-
-  position: 'relative',
-},
-
-bannerBgImage: {
-  resizeMode: 'cover',
-},
-
-/* =============================================================
-   LEFT SIDE LIGHT GRADIENT-LIKE OVERLAY
-============================================================= */
-
-bannerLeftOverlay: {
-  position: 'absolute',
-
-  left: 0,
-  top: 0,
-  bottom: 0,
-
-  width: '58%',
-
-  // backgroundColor: 'rgba(255,255,255,0.72)',
-},
-
-/* =============================================================
-   TOP LEFT TEXT
-============================================================= */
-
-bannerTextWrap: {
-  position: 'absolute',
-
-  top: 16,
-  left: 16,
-
-  width: '58%',
-
-  paddingRight: 8,
-},
-
-bannerEyebrow: {
-  color: colors.primary,
-
-  fontSize: 8.5,
-
-  letterSpacing: 1.4,
-
-  fontFamily: 'Manrope-Bold',
-
-  marginBottom: 4,
-},
-
-bannerTitle: {
-  color: colors.primaryDark,
-
-  fontSize: 17,
-
-  lineHeight: 21,
-
-  fontFamily: 'Manrope-ExtraBold',
-},
-
-// bannerDivider: {
-//   width: 28,
-//   height: 3,
-
-//   borderRadius: 2,
-
-//   backgroundColor: colors.primary,
-
-//   marginTop: 8,
-//   marginBottom: 7,
-// },
-
-bannerSubtitle: {
-  color: '#45615a',
-
-  fontSize: 10,
-
-  lineHeight: 14,
-
-  fontFamily: 'Manrope-Medium',
-},
   categoryCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: colors.surface,
+    backgroundColor: '#FAFAFA',
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 16,
+    borderColor: '#F0F0F0',
+    borderRadius: 20,
     padding: 14,
     marginBottom: 12,
   },
-  categoryCardSmall: { padding: 11, marginBottom: 9 },
+  categoryCardSmall: { padding: 12, marginBottom: 10 },
   categoryIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  categoryIconWrapSmall: { width: 42, height: 42 },
-  categoryTextWrap: { flex: 1 },
+  categoryTextWrap: { flex: 1, marginLeft: 14, marginRight: 8 },
   categoryTitle: {
-    color: colors.text,
-    fontSize: 14.5,
+    color: '#111827',
+    fontSize: 15,
     fontFamily: 'Manrope-Bold',
-    marginBottom: 2,
+    marginBottom: 3,
   },
   categorySubtitle: {
-    color: colors.muted,
+    color: '#6B7280',
     fontSize: 11.5,
     fontFamily: 'Manrope-Regular',
   },
   categoryArrowWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  listCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 8,
-  },
-  listCardSmall: { padding: 13, marginTop: 6 },
-  listHeading: {
-    color: colors.text,
-    fontSize: 13.5,
-    fontFamily: 'Manrope-Bold',
-    marginBottom: 3,
-  },
-  listSubheading: {
-    color: colors.muted,
-    fontSize: 11.5,
-    fontFamily: 'Manrope-Regular',
-    marginBottom: 14,
-    lineHeight: 16,
-  },
-  listButtonRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  listButton: {
-    flex: 1,
+  bottomListCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    backgroundColor: `${colors.primary}14`,
-    borderRadius: 10,
-    paddingVertical: 11,
+    backgroundColor: '#F8FAF8',
+    borderWidth: 1,
+    borderColor: '#E6F4EA',
+    borderRadius: 16,
+    padding: 12,
+    marginTop: 4,
   },
-  listButtonAlt: {
-    backgroundColor: '#EDE9FE',
+  bottomListIconWrap: {
+    marginRight: 10,
   },
-  listButtonLabel: {
-    color: colors.primary,
+  bottomListTextWrap: {
+    flex: 1,
+    marginRight: 8,
+  },
+  bottomListTitle: {
+    color: '#111827',
     fontSize: 12,
+    fontFamily: 'Manrope-Bold',
+    marginBottom: 2,
+  },
+  bottomListSubtitle: {
+    color: '#6B7280',
+    fontSize: 10,
+    fontFamily: 'Manrope-Regular',
+    lineHeight: 14,
+  },
+  bottomListButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    borderWidth: 1,
+    borderColor: '#0F9D58',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#ffffff',
+  },
+  bottomListButtonText: {
+    color: '#0F9D58',
+    fontSize: 11,
     fontFamily: 'Manrope-Bold',
   },
 });

@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 
-export default function Stepper({ label, value, onChange, min = 0, max = 99 }) {
+export default function Stepper({ label, value, onChange, min = 0, max = 99, containerStyle }) {
   function decrease() {
     if (value > min) onChange(value - 1);
   }
@@ -11,15 +11,17 @@ export default function Stepper({ label, value, onChange, min = 0, max = 99 }) {
   }
 
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.label}>{label}</Text>
+    <View style={[styles.wrap, containerStyle]}>
+      <Text style={styles.label} numberOfLines={1}>
+        {label}
+      </Text>
       <View style={styles.row}>
         <TouchableOpacity
           style={[styles.button, value <= min && styles.buttonDisabled]}
           onPress={decrease}
           disabled={value <= min}
         >
-          <Ionicons name="remove" size={18} color={value <= min ? colors.border : colors.primary} />
+          <Ionicons name="remove" size={16} color={value <= min ? colors.border : colors.primary} />
         </TouchableOpacity>
 
         <Text style={styles.value}>{value}</Text>
@@ -29,7 +31,7 @@ export default function Stepper({ label, value, onChange, min = 0, max = 99 }) {
           onPress={increase}
           disabled={value >= max}
         >
-          <Ionicons name="add" size={18} color={value >= max ? colors.border : colors.primary} />
+          <Ionicons name="add" size={16} color={value >= max ? colors.border : colors.primary} />
         </TouchableOpacity>
       </View>
     </View>
@@ -42,7 +44,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.text,
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '700',
     marginBottom: 7,
   },
@@ -51,15 +53,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
+    borderRadius: 8,
     backgroundColor: '#fafbfc',
     justifyContent: 'space-between',
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
     paddingVertical: 6,
   },
   button: {
-    width: 34,
-    height: 34,
+    width: 30,
+    height: 30,
     borderRadius: 8,
     backgroundColor: '#ffffff',
     borderWidth: 1,
@@ -71,7 +73,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   value: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: colors.text,
   },

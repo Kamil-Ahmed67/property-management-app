@@ -12,11 +12,13 @@ import { AuthContext } from '../providers/AuthProvider';
 import { useLanguage } from '../providers/LanguageProvider';
 import { colors } from '../theme';
 import { useGreeting } from '../hooks/useGreeting';
+import { useLogoutConfirm } from '../providers/LogoutConfirmProvider';
 
 export default function Navbar({ onMenuPress, onSelectMenu }) {
-  const { loginData, logout } = useContext(AuthContext);
+  const { loginData } = useContext(AuthContext);
   const { lang, t, toggleLanguage } = useLanguage();
   const greetingText = useGreeting();
+  const { requestLogout } = useLogoutConfirm();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const displayName = loginData?.Name || loginData?.UserId || t('nav.user');
@@ -43,7 +45,7 @@ export default function Navbar({ onMenuPress, onSelectMenu }) {
 
   function handleLogout() {
     setMenuOpen(false);
-    logout();
+    requestLogout();
   }
 
   return (
@@ -102,7 +104,7 @@ export default function Navbar({ onMenuPress, onSelectMenu }) {
 
         <TouchableOpacity
           style={styles.iconButton}
-          onPress={logout}
+          onPress={requestLogout}
           hitSlop={8}
           activeOpacity={0.65}
         >
