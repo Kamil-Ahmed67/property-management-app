@@ -67,7 +67,7 @@ export default function ExpenseCreateScreen({ onNavigate }) {
     (async () => {
       try {
         const response = await fetch(
-          `${config.BMS_API}api/GetExpenseSourceOptions?phone=${encodeURIComponent(phone)}`,
+          `${config.BMS_API}api/GetExpenseSourceOptions?phone=${encodeURIComponent(phone)}&uId=${loginData?.Id}`,
           { headers: { TenantId: TENANT_ID } }
         );
         const data = await response.json().catch(() => null);
@@ -143,6 +143,7 @@ export default function ExpenseCreateScreen({ onNavigate }) {
           TenantId: TENANT_ID,
         },
         body: JSON.stringify({
+          UId: loginData?.Id,
           Phone: phone,
           // A unit selection stores the property NAME in ExpenseType (as
           // specified) plus all three IDs; "Common" stores the literal

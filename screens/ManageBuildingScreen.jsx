@@ -45,7 +45,7 @@ export default function ManageBuildingScreen({ onNavigate }) {
   async function loadProperties() {
     try {
       const response = await fetch(
-        `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phone)}`,
+        `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phone)}&uId=${loginData?.Id}`,
         { headers: { TenantId: TENANT_ID } }
       );
       const data = await response.json().catch(() => null);
@@ -113,10 +113,11 @@ export default function ManageBuildingScreen({ onNavigate }) {
           TenantId: TENANT_ID,
         },
         body: JSON.stringify({
-          PropertyId: property.Id,
-          IsActive: nextIsActive,
-          Phone: phone,
-        }),
+        PropertyId: property.Id,
+        IsActive: nextIsActive,
+        Phone: phone,
+        UId: loginData?.Id,
+      }),
       });
 
       const data = await response.json().catch(() => null);
@@ -182,6 +183,7 @@ export default function ManageBuildingScreen({ onNavigate }) {
           TenantId: TENANT_ID,
         },
         body: JSON.stringify({
+          UId: loginData?.Id,
           PropDetailsId: target.id,
           Phone: phone,
         }),

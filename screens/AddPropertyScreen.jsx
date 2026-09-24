@@ -105,6 +105,7 @@ export default function AddPropertyScreen({ onNavigate }) {
           TenantId: TENANT_ID,
         },
         body: JSON.stringify({
+          UId: loginData?.Id,
           Phone: loginData?.Phone || loginData?.phone || '',
           Name: name,
           Address: address,

@@ -9,6 +9,30 @@ const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 min idle → logout
 const RETRY_DELAY_MS = 10 * 1000;             // retry refresh after 10s on failure
 const MAX_REFRESH_RETRIES = 3;                // give up after 3 consecutive failures
 
+// Fetches the caller's role list from the new CentralAPI endpoint and
+// returns it as a plain array of role-name strings, e.g. ['Tenant',
+// 'SocietyMember']. Never throws — a failed fetch just yields an empty
+// array, so a role-service hiccup doesn't block login/refresh entirely.
+async function fetchUserRoles(uId, token) {
+  try {
+    const response = await fetch(`${config.API_BASE_URL}api/GetUserRoles?uId=${uId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        TenantId: TENANT_ID,
+      },
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok && data?.success) {
+      return (data.data || []).map((r) => r.UserRole).filter(Boolean);
+    }
+    console.log('[Auth] Could not fetch user roles — status:', response.status);
+    return [];
+  } catch (err) {
+    console.log('[Auth] Failed to fetch user roles:', err.message);
+    return [];
+  }
+}
+
 export const AuthProvider = ({ children, onLogout }) => {
   const [loginData, setLoginData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -150,8 +174,16 @@ export const AuthProvider = ({ children, onLogout }) => {
       refreshRetriesRef.current = 0;
 
       const data = await response.json();
+
+      // Re-fetch roles on every rotation too — not just at initial login —
+      // so a role change made while the user stays logged in (e.g. an
+      // admin grants them a new role) is picked up on the next refresh
+      // rather than requiring a full logout/login cycle.
+      const userRoles = await fetchUserRoles(data.userData.Id, data.accessToken);
+
       const updatedLoginData = {
         ...data.userData,
+        UserRoles: userRoles,
         tenantId: TENANT_ID,
         token: data.accessToken,
         refreshToken: data.refreshToken,
@@ -224,7 +256,19 @@ export const AuthProvider = ({ children, onLogout }) => {
       }
 
       const { accessToken: token, refreshToken, expiration, userData } = data;
-      const updatedLoginData = { ...userData, tenantId: TENANT_ID, token, refreshToken, expiration };
+
+      // Separate call, right after login succeeds — using the just-issued
+      // token and the account Id login already returned.
+      const userRoles = await fetchUserRoles(userData.Id, token);
+
+      const updatedLoginData = {
+        ...userData,
+        UserRoles: userRoles,
+        tenantId: TENANT_ID,
+        token,
+        refreshToken,
+        expiration,
+      };
 
       sessionRef.current = updatedLoginData;
       refreshRetriesRef.current = 0;
@@ -233,7 +277,7 @@ export const AuthProvider = ({ children, onLogout }) => {
       recordActivity();
       fn.current.scheduleRefresh(expiration);
 
-      console.log('[Auth] ✅ Logged in. Token expires:', expiration);
+      console.log('[Auth] ✅ Logged in. Token expires:', expiration, '— Roles:', userRoles);
       return true;
     } catch (err) {
       console.log('Login error:', err.message);

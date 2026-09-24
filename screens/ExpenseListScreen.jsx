@@ -90,7 +90,7 @@ export default function ExpenseListScreen({ onNavigate }) {
     if (!isRefresh) setLoading(true);
     try {
       const response = await fetch(
-        `${config.BMS_API}api/GetExpenseList?phone=${encodeURIComponent(phone)}&expenseMonth=${month}&expenseYear=${year}`,
+      `${config.BMS_API}api/GetExpenseList?phone=${encodeURIComponent(phone)}&uId=${loginData?.Id}&expenseMonth=${month}&expenseYear=${year}`,
         { headers: { TenantId: TENANT_ID } }
       );
       const data = await response.json().catch(() => null);

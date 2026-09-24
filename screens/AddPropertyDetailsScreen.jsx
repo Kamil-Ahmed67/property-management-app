@@ -69,7 +69,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
     (async () => {
       try {
         const response = await fetch(
-          `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phone)}`,
+         `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phone)}&uId=${loginData?.Id}`,
           { headers: { TenantId: TENANT_ID } }
         );
         const data = await response.json().catch(() => null);
@@ -156,6 +156,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
           TenantId: TENANT_ID,
         },
         body: JSON.stringify({
+          UId: loginData?.Id,
           Phone: selectedProperty.Phone,
           PropertyId: selectedProperty.Id,
           FlatName: flatName,

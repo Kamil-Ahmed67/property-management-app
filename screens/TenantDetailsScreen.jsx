@@ -9,9 +9,6 @@ import config from '../config';
 
 const TENANT_ID = 'PropHub';
 
-// `TenantType`/`Religion` come from the API in English (the same values
-// AddTenantsScreen writes) — map them to the matching translation key so
-// this screen shows a translated label without changing the stored value.
 const TENANT_TYPE_KEYS = {
   family: 'tenantType.family',
   bachelor: 'tenantType.bachelor',
@@ -67,12 +64,8 @@ export default function TenantDetailScreen({ tenantId }) {
 
     (async () => {
       try {
-        // The API only exposes a list endpoint, not a get-by-id — fetch the
-        // full list and find the matching record. Fine at this data scale;
-        // worth adding a dedicated GetTenantById endpoint later if the
-        // tenant list ever grows large enough for this to matter.
         const response = await fetch(
-          `${config.BMS_API}api/GetTenantList?phone=${encodeURIComponent(phone)}`,
+         `${config.BMS_API}api/GetTenantList?phone=${encodeURIComponent(phone)}&uId=${loginData?.Id}`,
           { headers: { TenantId: TENANT_ID } }
         );
         const data = await response.json().catch(() => null);
@@ -91,7 +84,7 @@ export default function TenantDetailScreen({ tenantId }) {
   function tenantTypeLabel(value) {
     if (!value) return value;
     const key = TENANT_TYPE_KEYS[value.toLowerCase()];
-    return key ? t(key) : value; // unknown value from API — show as-is
+    return key ? t(key) : value;
   }
 
   function religionLabel(value) {
@@ -117,11 +110,17 @@ export default function TenantDetailScreen({ tenantId }) {
     );
   }
 
+  // No real PropertyId/PropDetailsId — this tenant was added via a
+  // manual connection-request accept, so the property/unit shown is
+  // exactly whatever the tenant typed themselves, not verified against
+  // real inventory.
+  const isTenantProvided = !tenant.PropertyId;
+
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
       {/* Header */}
-      <View style={styles.headerCard}>
-        <View style={styles.avatar}>
+      <View style={[styles.headerCard, isTenantProvided && styles.headerCardTenantProvided]}>
+        <View style={[styles.avatar, isTenantProvided && styles.avatarTenantProvided]}>
           <Text style={styles.avatarText}>
             {(tenant.TenantName || '?').slice(0, 1).toUpperCase()}
           </Text>
@@ -130,6 +129,12 @@ export default function TenantDetailScreen({ tenantId }) {
         {tenant.TenantType ? (
           <View style={styles.typePill}>
             <Text style={styles.typePillText}>{tenantTypeLabel(tenant.TenantType)}</Text>
+          </View>
+        ) : null}
+        {isTenantProvided ? (
+          <View style={styles.providedBadge}>
+            <Ionicons name="information-circle-outline" size={12} color={colors.accent} />
+            <Text style={styles.providedBadgeText}>{t('tenantList.tenantProvided')}</Text>
           </View>
         ) : null}
       </View>
@@ -156,15 +161,19 @@ export default function TenantDetailScreen({ tenantId }) {
         <InfoRow
           icon="business-outline"
           label={t('tenantDetail.property')}
-          value={tenant.PropertyName}
+          value={tenant.DisplayPropertyName}
         />
-        <InfoRow
-          icon="location-outline"
-          label={t('common.address')}
-          value={tenant.PropertyAddress}
-        />
-        <InfoRow icon="home-outline" label={t('tenantDetail.flat')} value={tenant.FlatName} />
-        <InfoRow icon="layers-outline" label={t('tenantDetail.floor')} value={tenant.Floor} />
+        {!isTenantProvided ? (
+          <InfoRow
+            icon="location-outline"
+            label={t('common.address')}
+            value={tenant.PropertyAddress}
+          />
+        ) : null}
+        <InfoRow icon="home-outline" label={t('tenantDetail.flat')} value={tenant.DisplayUnitNo} />
+        {!isTenantProvided ? (
+          <InfoRow icon="layers-outline" label={t('tenantDetail.floor')} value={tenant.Floor} />
+        ) : null}
       </SectionCard>
 
       {/* Lease terms */}
@@ -209,9 +218,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: 16, padding: 22,
     alignItems: 'center', marginBottom: 16,
   },
+  headerCardTenantProvided: {
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    borderStyle: 'dashed',
+  },
   avatar: {
     width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center', marginBottom: 10,
+  },
+  avatarTenantProvided: {
+    backgroundColor: colors.accent,
   },
   avatarText: { color: '#ffffff', fontSize: 24, fontFamily: 'Manrope-Bold' },
   tenantName: { color: colors.text, fontSize: 18, fontFamily: 'Manrope-ExtraBold', textAlign: 'center' },
@@ -220,6 +237,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 5,
   },
   typePillText: { color: colors.accent, fontSize: 12, fontFamily: 'Manrope-Bold' },
+  providedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: `${colors.accent}14`, borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 5, marginTop: 8,
+  },
+  providedBadgeText: { color: colors.accent, fontSize: 11, fontFamily: 'Manrope-Bold' },
   sectionCard: {
     backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 14,
   },

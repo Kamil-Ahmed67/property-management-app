@@ -18,14 +18,11 @@ import { countries } from 'countries-list';
 import { colors } from '../theme';
 import config from '../config';
 
-// Same background image and fallback pattern as LoginScreen.jsx.
 const BG_IMAGE = require('../assets/images/RegBG.jpg');
 
 const TENANT_ID = 'PropHub';
+const USER_ROLE_ACCESS_KEY = 'UR';
 
-// npm install countries-list
-// Zero-dependency dataset (name, ISO code, dial code, flag emoji) for all
-// ~250 countries — see LoginScreen.jsx for the same pattern.
 const COUNTRY_LIST = Object.entries(countries)
   .map(([code, data]) => ({
     code,
@@ -70,6 +67,29 @@ export default function RegistrationScreen({ onNavigateToLogin }) {
   const [successMessage, setSuccessMessage] = useState('');
   const [registering, setRegistering] = useState(false);
 
+  const [roleOptions, setRoleOptions] = useState([]);
+  const [loadingRoles, setLoadingRoles] = useState(true);
+  const [selectedRoleIds, setSelectedRoleIds] = useState(new Set());
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await fetch(
+          `${config.BMS_API}api/GetMasterChildList?accessKey=${USER_ROLE_ACCESS_KEY}`,
+          { headers: { TenantId: TENANT_ID } }
+        );
+        const data = await response.json().catch(() => null);
+        if (response.ok && data?.success) {
+          setRoleOptions(data.data || []);
+        }
+      } catch (err) {
+        console.log('Failed to load role list:', err.message);
+      } finally {
+        setLoadingRoles(false);
+      }
+    })();
+  }, []);
+
   const filteredCountries = useMemo(() => {
     const query = countrySearch.trim().toLowerCase();
     if (!query) return COUNTRY_LIST;
@@ -91,6 +111,18 @@ export default function RegistrationScreen({ onNavigateToLogin }) {
     setCountryPickerOpen(false);
   }
 
+  function toggleRole(childId) {
+    setSelectedRoleIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(childId)) {
+        next.delete(childId);
+      } else {
+        next.add(childId);
+      }
+      return next;
+    });
+  }
+
   function handleChange(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -110,8 +142,12 @@ export default function RegistrationScreen({ onNavigateToLogin }) {
 
     const { name, email, phone, password, confirmPassword } = form;
 
-    if (!name || !email || !phone || !password || !confirmPassword) {
+    if (!name || !phone || !password || !confirmPassword) {
       setLocalError('Please fill in all required fields.');
+      return;
+    }
+    if (selectedRoleIds.size === 0) {
+      setLocalError('Please select at least one user role.');
       return;
     }
     if (password !== confirmPassword) {
@@ -126,35 +162,43 @@ export default function RegistrationScreen({ onNavigateToLogin }) {
     setRegistering(true);
 
     const fullPhone = buildFullPhone(country.dialCode, phone);
+    const selectedRoleNames = roleOptions
+      .filter((r) => selectedRoleIds.has(r.ChildId))
+      .map((r) => r.ChildName);
 
-    try {
-      const emailTaken = await checkExists('CheckEmailExists', 'email', email);
-      if (emailTaken) {
-        setLocalError('An account with this email already exists.');
-        return;
-      }
+try {
+  // Only check for a duplicate email if one was actually entered — an
+  // empty value has nothing to check against, and skipping it here
+  // avoids sending a meaningless empty-string query to the backend.
+  if (email.trim()) {
+    const emailTaken = await checkExists('CheckEmailExists', 'email', email);
+    if (emailTaken) {
+      setLocalError('An account with this email already exists.');
+      return;
+    }
+  }
 
-      const phoneTaken = await checkExists('CheckPhoneExists', 'phone', fullPhone);
-      if (phoneTaken) {
-        setLocalError('An account with this phone number already exists.');
-        return;
-      }
+  const phoneTaken = await checkExists('CheckPhoneExists', 'phone', fullPhone);
+  if (phoneTaken) {
+    setLocalError('An account with this phone number already exists.');
+    return;
+  }
 
-      const response = await fetch(`${config.BMS_API}api/RegisterUser`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          TenantId: TENANT_ID,
-        },
-        body: JSON.stringify({
-          Name: name,
-          Mail: email,
-          Phone: fullPhone,
-          // Address: address,
-          Password: password,
-        }),
-      });
-
+  const response = await fetch(`${config.BMS_API}api/RegisterUser`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      TenantId: TENANT_ID,
+    },
+    body: JSON.stringify({
+      Name: name,
+      Mail: email.trim() || null,
+      Phone: fullPhone,
+      // Address: address,
+      Password: password,
+      UserRoles: selectedRoleNames,
+    }),
+  });
       const data = await response.json().catch(() => null);
 
       if (response.status !== 200 || (data && data.success === false)) {
@@ -188,17 +232,11 @@ export default function RegistrationScreen({ onNavigateToLogin }) {
         <View style={styles.hero}>
           <Text style={styles.heroTitle}>Create your account</Text>
           <Text style={styles.heroSubtitle}>
-            Set up access to manage your properties, tenants, and rent
-            collection.
+            Manage properties, tenants, and rent collection.
           </Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Register</Text>
-          <Text style={styles.cardSubtitle}>
-            Fill in your details to create a new account
-          </Text>
-
           <Text style={styles.label}>Full Name</Text>
           <TextInput
             style={styles.inputFull}
@@ -217,8 +255,7 @@ export default function RegistrationScreen({ onNavigateToLogin }) {
             onChangeText={(v) => handleChange('email', v)}
             keyboardType="email-address"
             autoCapitalize="none"
-          />
-
+           />
           <Text style={styles.label}>Phone Number</Text>
           <View style={styles.phoneRow}>
             <TouchableOpacity
@@ -239,6 +276,35 @@ export default function RegistrationScreen({ onNavigateToLogin }) {
               keyboardType="phone-pad"
             />
           </View>
+
+          <Text style={styles.label}>User Role(s)</Text>
+
+          {loadingRoles ? (
+            <View style={styles.roleLoadingBox}>
+              <ActivityIndicator size="small" color={colors.muted} />
+            </View>
+          ) : (
+            <View style={styles.roleChipRow}>
+              {roleOptions.map((role) => {
+                const checked = selectedRoleIds.has(role.ChildId);
+                return (
+                  <TouchableOpacity
+                    key={role.ChildId}
+                    style={[styles.roleChip, checked && styles.roleChipChecked]}
+                    onPress={() => toggleRole(role.ChildId)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.chipCheckbox, checked && styles.chipCheckboxChecked]}>
+                      {checked ? <Ionicons name="checkmark" size={11} color="#ffffff" /> : null}
+                    </View>
+                    <Text style={[styles.roleChipLabel, checked && styles.roleChipLabelChecked]}>
+                      {role.ChildName}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
 
           {/* <Text style={styles.label}>Address</Text>
           <TextInput
@@ -333,6 +399,7 @@ export default function RegistrationScreen({ onNavigateToLogin }) {
           </TouchableOpacity>
         </View>
 
+        {/* Country picker modal — unchanged */}
         <Modal
           visible={countryPickerOpen}
           transparent
@@ -401,82 +468,44 @@ export default function RegistrationScreen({ onNavigateToLogin }) {
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-  },
-  backgroundFallback: {
-    backgroundColor: colors.primaryDark,
-  },
-  overlayTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.overlay,
-  },
-  page: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  content: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  hero: {
-    marginBottom: 26,
-  },
-  heroMark: {
-    color: colors.accent,
-    fontSize: 13,
-    fontFamily: 'Manrope-ExtraBold',
-    letterSpacing: 2.5,
-    marginBottom: 14,
-  },
+  background: { flex: 1 },
+  backgroundFallback: { backgroundColor: colors.primaryDark },
+  overlayTint: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
+  page: { flex: 1, backgroundColor: 'transparent' },
+  content: { flexGrow: 1, paddingTop: 44, paddingBottom: 28, paddingHorizontal: 20 },
+  hero: { marginBottom: 16 },
   heroTitle: {
     color: '#ffffff',
-    fontSize: 27,
+    fontSize: 20,
     fontFamily: 'Manrope-ExtraBold',
-    lineHeight: 34,
-    marginBottom: 10,
+    lineHeight: 25,
+    marginBottom: 5,
   },
   heroSubtitle: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 14,
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 12.5,
     fontFamily: 'Manrope-Regular',
-    lineHeight: 15,
+    lineHeight: 17,
   },
   card: {
     backgroundColor: colors.surface,
     borderRadius: 14,
-    padding: 24,
+    padding: 22,
+    paddingBottom: 28,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
     elevation: 6,
   },
-  cardTitle: {
-    color: colors.text,
-    fontSize: 21,
-    fontFamily: 'Manrope-ExtraBold',
-  },
-  cardSubtitle: {
-    color: colors.muted,
-    fontSize: 13,
-    fontFamily: 'Manrope-Regular',
-    marginTop: 3,
-    marginBottom: 15,
-  },
   label: {
     color: colors.text,
-    fontSize: 12,
+    fontSize: 11.5,
     fontFamily: 'Manrope-Bold',
     letterSpacing: 0.3,
-    marginBottom: 7,
+    marginBottom: 6,
   },
-  phoneRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
+  phoneRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   countryButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -486,16 +515,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#fafbfc',
     paddingHorizontal: 10,
-    paddingVertical: 12,
+    paddingVertical: 11,
   },
-  countryFlag: {
-    fontSize: 16,
-  },
-  countryDialCode: {
-    fontSize: 14,
-    color: colors.text,
-    fontFamily: 'Manrope-SemiBold',
-  },
+  countryFlag: { fontSize: 16 },
+  countryDialCode: { fontSize: 14, color: colors.text, fontFamily: 'Manrope-SemiBold' },
   phoneInput: {
     flex: 1,
     borderWidth: 1,
@@ -503,11 +526,59 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#fafbfc',
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 11,
     fontSize: 14,
     fontFamily: 'Manrope-Regular',
     color: colors.text,
   },
+
+  // --- Role chips: no border anywhere, side-by-side, wraps to new lines.
+  // Checked state is shown with a tinted background + filled checkbox
+  // square, instead of a border. ---
+  roleLoadingBox: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  roleChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  roleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f1f3f5',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  roleChipChecked: {
+    backgroundColor: `${colors.primary}1F`,
+  },
+  chipCheckbox: {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: '#d7dbe0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipCheckboxChecked: {
+    backgroundColor: colors.primary,
+  },
+  roleChipLabel: {
+    fontSize: 13,
+    fontFamily: 'Manrope-Medium',
+    color: colors.muted,
+  },
+  roleChipLabelChecked: {
+    color: colors.primaryDark,
+    fontFamily: 'Manrope-Bold',
+  },
+
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -515,12 +586,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 10,
     backgroundColor: '#fafbfc',
-    marginBottom: 14,
+    marginBottom: 10,
   },
   input: {
     flex: 1,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 11,
     fontSize: 14,
     fontFamily: 'Manrope-Regular',
     color: colors.text,
@@ -531,76 +602,47 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#fafbfc',
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 11,
     fontSize: 14,
     fontFamily: 'Manrope-Regular',
     color: colors.text,
-    marginBottom: 14,
+    marginBottom: 10,
   },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  eyeButton: {
-    paddingHorizontal: 12,
-  },
+  textArea: { height: 80, textAlignVertical: 'top' },
+  eyeButton: { paddingHorizontal: 12 },
   errorBox: {
     backgroundColor: '#fef2f2',
     borderWidth: 1,
     borderColor: '#fecaca',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 16,
+    paddingVertical: 9,
+    marginBottom: 12,
   },
-  errorText: {
-    color: colors.error,
-    fontSize: 13,
-    fontFamily: 'Manrope-Regular',
-  },
+  errorText: { color: colors.error, fontSize: 12.5, fontFamily: 'Manrope-Regular' },
   successBox: {
     backgroundColor: '#f0fdf4',
     borderWidth: 1,
     borderColor: '#bbf7d0',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 16,
+    paddingVertical: 9,
+    marginBottom: 12,
   },
-  successText: {
-    color: colors.primaryDark,
-    fontSize: 13,
-    fontFamily: 'Manrope-SemiBold',
-  },
+  successText: { color: colors.primaryDark, fontSize: 12.5, fontFamily: 'Manrope-SemiBold' },
   submitButton: {
     backgroundColor: colors.primary,
     borderRadius: 10,
-    paddingVertical: 15,
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 4,
   },
-  submitButtonDisabled: {
-    opacity: 0.6,
-  },
-  submitLabel: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontFamily: 'Manrope-Bold',
-    letterSpacing: 0.3,
-  },
-  registerRow: {
-    marginTop: 18,
-    alignItems: 'center',
-  },
-  registerText: {
-    fontSize: 13,
-    fontFamily: 'Manrope-Regular',
-    color: colors.muted,
-  },
-  registerLink: {
-    color: colors.primary,
-    fontFamily: 'Manrope-Bold',
-  },
+  submitButtonDisabled: { opacity: 0.6 },
+  submitLabel: { color: '#ffffff', fontSize: 15, fontFamily: 'Manrope-Bold', letterSpacing: 0.3 },
+  registerRow: { marginTop: 14, alignItems: 'center' },
+  registerText: { fontSize: 12.5, fontFamily: 'Manrope-Regular', color: colors.muted },
+  registerLink: { color: colors.primary, fontFamily: 'Manrope-Bold' },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -609,7 +651,7 @@ const styles = StyleSheet.create({
   },
   pickerCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 14,
+    borderRadius: 6,
     paddingTop: 8,
     paddingBottom: 4,
     maxHeight: '75%',
@@ -643,9 +685,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     padding: 0,
   },
-  pickerList: {
-    flexGrow: 0,
-  },
+  pickerList: { flexGrow: 0 },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -653,16 +693,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 13,
   },
-  optionDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  optionLabel: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.text,
-    fontFamily: 'Manrope-Medium',
-  },
+  optionDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  optionLabel: { flex: 1, fontSize: 14, color: colors.text, fontFamily: 'Manrope-Medium' },
   optionDialCode: {
     fontSize: 13,
     color: colors.muted,

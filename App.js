@@ -4,6 +4,8 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { AuthProvider, AuthContext } from './providers/AuthProvider';
+import { InterfaceModeProvider, useInterfaceMode } from './providers/InterfaceModeProvider';
+import { canAccessInterface } from './utils/accessControl';
 import SplashScreen from './components/SplashScreen';
 import LoginScreen from './screens/LoginScreen';
 import RegistrationScreen from './screens/RegistrationScreen';
@@ -33,6 +35,15 @@ import ExpenseCreateScreen from './screens/ExpenseCreateScreen';
 import ReportScreen from './screens/ReportScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 
+import TenantHomeScreen from './screens/TenantHomeScreen';
+import SocietyMemberScreen from './screens/SocietyMemberScreen';
+import AccessDeniedScreen from './screens/AccessDeniedScreen';
+import ComplainListScreen from './screens/ComplainListScreen';
+import AddComplainScreen from './screens/AddComplainScreen';
+import ConnectionRequestsScreen from './screens/ConnectionRequestsScreen';
+import MyHomeHistoryScreen from './screens/TenantScreen/MyHomeHistoryScreen';
+import ConnectedTenantsScreen from './screens/ConnectedTenantsScreen';
+
 const titles = Object.fromEntries(menuItems.map((item) => [item.key, item.label]));
 const MIN_SPLASH_DURATION = 1400;
 
@@ -51,15 +62,23 @@ function ActivityTracker({ children }) {
 }
 
 function MainApp() {
+  const { loginData, logout } = useContext(AuthContext);
+
+  if (!canAccessInterface(loginData?.UserRoles, 'admin')) {
+    return (
+      <AccessDeniedScreen
+        title="Access Restricted"
+        message="This area is only available to Admin and SuperAdmin accounts."
+        role={(loginData?.UserRoles || []).join(', ')}
+        onLogout={logout}
+      />
+    );
+  }
+
   const [screen, setScreen] = useState('home');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedTenantId, setSelectedTenantId] = useState(null);
 
-  // Carries an optional propertyId when navigating to add-property-details,
-  // so that screen can pre-select and lock the Property field. Any
-  // navigation to a DIFFERENT screen — or to add-property-details without a
-  // propertyId (e.g. via the sidebar/home grid) — clears it, so a stale
-  // lock from a previous visit never leaks into an unrelated navigation.
   const [presetPropertyId, setPresetPropertyId] = useState(null);
 
   function handleNavigate(screenKey, params) {
@@ -71,25 +90,20 @@ function MainApp() {
     setScreen(screenKey);
   }
 
-  // Android hardware/gesture back button listener
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (sidebarOpen) {
         setSidebarOpen(false);
         return true;
       }
-
-      // Redirect back to manage-building when pressing back on add-property
       if (screen === 'add-property') {
         handleNavigate('manage-building');
         return true;
       }
-
       if (screen === 'add-property-details') {
         handleNavigate('manage-building');
         return true;
       }
-
       if (screen === 'tenant-detail') {
         handleNavigate('tenant-list');
         return true;
@@ -150,6 +164,7 @@ function MainApp() {
     if (screen === 'tenant-list') {
       return (
         <TenantListScreen
+          onNavigate={handleNavigate}
           onSelectTenant={(id) => {
             setSelectedTenantId(id);
             handleNavigate('tenant-detail');
@@ -160,8 +175,27 @@ function MainApp() {
     if (screen === 'tenant-detail') {
       return <TenantDetailScreen tenantId={selectedTenantId} />;
     }
+    if (screen === 'complain') {
+      return <ComplainListScreen mode="admin" onNavigate={handleNavigate} />;
+    }
+    if (screen === 'connection-requests') {
+      return <ConnectionRequestsScreen />;
+    }
+    if (screen === 'connected-tenants') {
+  return <ConnectedTenantsScreen onSelectTenant={(id) => { setSelectedTenantId(id); handleNavigate('tenant-detail'); }} />;
+}
+    if (screen === 'home-history') {
+  return (
+    <>
+      <TenantNavbar onSelectMenu={handleNavbarSelect} />
+      <MyHomeHistoryScreen uId={uId} />
+      <TenantBottomNav currentScreen={activeTab} onSelect={handleNavbarSelect} />
+    </>
+  );
+}
     return <PlaceholderScreen title={titles[screen] || screen} />;
   }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="light" />
@@ -185,19 +219,34 @@ function MainApp() {
   );
 }
 
+function LoggedInRouter() {
+  const { loginData, logout } = useContext(AuthContext);
+  const { activeInterface, availableInterfaces } = useInterfaceMode();
+
+  if (availableInterfaces.length === 0) {
+    return (
+      <AccessDeniedScreen
+        title="Unrecognized Role"
+        message="Your account doesn't have a recognized role assigned, so access can't be granted. Please contact an administrator."
+        role={(loginData?.UserRoles || []).join(', ') || null}
+        onLogout={logout}
+      />
+    );
+  }
+
+  if (activeInterface === 'admin') return <MainApp />;
+  if (activeInterface === 'tenant') return <TenantHomeScreen />;
+  if (activeInterface === 'societyMember') return <SocietyMemberScreen />;
+
+  return <SplashScreen />;
+}
+
 function RootNavigator() {
   const { loginData, checkingSession } = useContext(AuthContext);
 
-  // Stack of auth-flow screens visited so far. Hardware back always pops
-  // to whichever screen the user actually came from — not a hardcoded
-  // destination — so Explore -> Login -> back lands on Explore,
-  // while Explore -> Register -> back lands on Explore too.
   const [authStack, setAuthStack] = useState(['explore']);
   const authScreen = authStack[authStack.length - 1];
 
-  // Explore's own sub-view (my-property / find-property / find-service) is
-  // lifted up here instead of living inside ExploreScreen, so it survives
-  // ExploreScreen being unmounted while the user is sent to Login and back.
   const [exploreView, setExploreView] = useState('home');
 
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
@@ -224,16 +273,13 @@ function RootNavigator() {
 
   useEffect(() => {
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (loginData) return false; // MainApp has its own back handler
+      if (loginData) return false;
 
-      // Inside Explore, drilled into a sub-view — step back to Explore's
-      // own home screen first, before touching the auth-flow stack.
       if (authScreen === 'explore' && exploreView !== 'home') {
         setExploreView('home');
         return true;
       }
 
-      // Otherwise pop the auth-flow stack back to the previous screen.
       if (authStack.length > 1) {
         goBackAuthScreen();
         return true;
@@ -254,7 +300,7 @@ function RootNavigator() {
   }
 
   if (loginData) {
-    return <MainApp />;
+    return <LoggedInRouter />;
   }
 
   if (authScreen === 'explore') {
@@ -297,11 +343,13 @@ export default function App() {
     <SafeAreaProvider>
       <LanguageProvider>
         <AuthWithLanguageReset>
-          <LogoutConfirmProvider>
-            <ActivityTracker>
-              <RootNavigator />
-            </ActivityTracker>
-          </LogoutConfirmProvider>
+          <InterfaceModeProvider>
+            <LogoutConfirmProvider>
+              <ActivityTracker>
+                <RootNavigator />
+              </ActivityTracker>
+            </LogoutConfirmProvider>
+          </InterfaceModeProvider>
         </AuthWithLanguageReset>
       </LanguageProvider>
     </SafeAreaProvider>

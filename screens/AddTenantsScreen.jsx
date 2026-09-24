@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '../providers/LanguageProvider';
 import {
   View,
@@ -13,17 +13,18 @@ import {
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
+  FlatList,
   findNodeHandle,
   UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import { AuthContext } from '../providers/AuthProvider';
 import { colors } from '../theme';
 import config from '../config';
 import StatusModal from '../components/StatusModal';
-
+import { countries } from 'countries-list';
 const TENANT_TYPE_OPTIONS = [
   { value: 'Family', labelKey: 'tenantType.family' },
   { value: 'Bachelor', labelKey: 'tenantType.bachelor' },
@@ -50,7 +51,22 @@ function initials(value) {
   const parts = String(value).trim().split(/\s+/);
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || parts[0]?.[1] || '')).toUpperCase();
 }
+const COUNTRY_LIST = Object.entries(countries)
+  .map(([code, data]) => ({
+    code,
+    name: data.name,
+    dialCode: `+${Array.isArray(data.phone) ? data.phone[0] : data.phone}`,
+    flag: data.emoji,
+  }))
+  .sort((a, b) => a.name.localeCompare(b.name));
 
+const DEFAULT_COUNTRY = COUNTRY_LIST.find((c) => c.code === 'BD') ?? COUNTRY_LIST[0];
+
+function buildFullPhone(dialCode, localNumber) {
+  const digitsOnly = localNumber.replace(/\D/g, '');
+  const trimmed = digitsOnly.startsWith('0') ? digitsOnly.slice(1) : digitsOnly;
+  return `${dialCode}${trimmed}`;
+}
 export default function AddTenantsScreen({ onNavigate }) {
   const { loginData } = useContext(AuthContext);
   const { t } = useLanguage();
@@ -66,6 +82,9 @@ export default function AddTenantsScreen({ onNavigate }) {
   const [tenantName, setTenantName] = useState('');
   const [nid, setNid] = useState('');
   const [phone, setPhone] = useState('');
+  const [country, setCountry] = useState(DEFAULT_COUNTRY);
+  const [countryPickerOpen, setCountryPickerOpen] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
   const [email, setEmail] = useState('');
   const [dob, setDob] = useState(null);
   const [tenantType, setTenantType] = useState('');
@@ -108,7 +127,7 @@ export default function AddTenantsScreen({ onNavigate }) {
     (async () => {
       try {
         const response = await fetch(
-          `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phoneUser)}`,
+         `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phoneUser)}&uId=${loginData?.Id}`,
           { headers: { TenantId: TENANT_ID } }
         );
         const data = await response.json().catch(() => null);
@@ -224,7 +243,27 @@ export default function AddTenantsScreen({ onNavigate }) {
     : [];
   const filled = [selectedProperty, selectedFloor, selectedFlat, tenantName.trim(), phone.trim()]
     .filter(Boolean).length;
+const filteredCountries = useMemo(() => {
+  const query = countrySearch.trim().toLowerCase();
+  if (!query) return COUNTRY_LIST;
+  return COUNTRY_LIST.filter(
+    (c) =>
+      c.name.toLowerCase().includes(query) ||
+      c.dialCode.includes(query) ||
+      c.code.toLowerCase().includes(query)
+  );
+}, [countrySearch]);
 
+function openCountryPicker() {
+  Keyboard.dismiss();
+  setCountrySearch('');
+  setCountryPickerOpen(true);
+}
+
+function handleSelectCountry(item) {
+  setCountry(item);
+  setCountryPickerOpen(false);
+}
   /**
    * Scrolls the focused input so its whole box sits inside whatever the
    * ScrollView's CURRENT visible height is. viewportRef.current is always
@@ -286,15 +325,44 @@ export default function AddTenantsScreen({ onNavigate }) {
     (activeDateField === 'endDate' && endDate) ||
     new Date();
 
+  // Shared by both platforms — the one place that actually decides which
+  // state field a picked date goes into.
+  function applyDate(field, date) {
+    if (field === 'dob') setDob(date);
+    if (field === 'startDate') setStartDate(date);
+    if (field === 'endDate') setEndDate(date);
+  }
+
+  // iOS keeps the inline component (still the correct, non-deprecated
+  // approach there) — this only ever fires from that component's onChange.
   function handleDateChange(event, selectedDate) {
     const field = activeDateField;
-    if (Platform.OS === 'android') {
-      setActiveDateField(null);
-    }
     if (event.type === 'dismissed' || !selectedDate) return;
-    if (field === 'dob') setDob(selectedDate);
-    if (field === 'startDate') setStartDate(selectedDate);
-    if (field === 'endDate') setEndDate(selectedDate);
+    applyDate(field, selectedDate);
+  }
+
+  // Android's picker is a native dialog, not a persistent view — the newer
+  // library versions deprecate driving it via the default component's
+  // onChange prop and want it opened imperatively instead.
+  function openDatePicker(field, currentValue) {
+    Keyboard.dismiss();
+
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: currentValue || new Date(),
+        mode: 'date',
+        display: 'default',
+        onChange: (event, selectedDate) => {
+          if (event.type === 'set' && selectedDate) {
+            applyDate(field, selectedDate);
+          }
+        },
+      });
+      return;
+    }
+
+    // iOS — set the field so the inline <DateTimePicker> below mounts.
+    setActiveDateField(field);
   }
 
   async function pickFile(setter) {
@@ -330,12 +398,13 @@ export default function AddTenantsScreen({ onNavigate }) {
           TenantId: TENANT_ID,
         },
         body: JSON.stringify({
+          UId: loginData?.Id,
           Phone: loginData?.Phone || loginData?.phone || '',
           PropertyId: selectedProperty.Id,
           PropDetailsId: propDetailsId,
           TenantName: tenantName,
           NID: nid,
-          TenantPhone: phone,
+          TenantPhone: buildFullPhone(country.dialCode, phone),
           TenantEmail: email,
           DOB: dob,
           TenantType: tenantType,
@@ -530,36 +599,40 @@ export default function AddTenantsScreen({ onNavigate }) {
             }}
           />
 
-          <View style={styles.row}>
-            <View style={styles.rowItem}>
-              <Text style={styles.label}>{t('addTenant.nid')}</Text>
-              <TextInput
-                {...focusProps('nid')}
-                style={styles.input}
-                placeholder={t('addTenant.nidPlaceholder')}
-                placeholderTextColor={colors.muted}
-                value={nid}
-                onChangeText={setNid}
-                keyboardType="number-pad"
-              />
-            </View>
-            <View style={styles.rowItem}>
-               <Text style={styles.label}>{t('common.phone')}</Text>
-              <TextInput
-                {...focusProps('phone')}
-                style={styles.input}
-                placeholder={t('addTenant.phonePlaceholder')}
-                placeholderTextColor={colors.muted}
-                value={phone}
-                onChangeText={(t) => {
-                  setPhone(t);
-                  if (error) setError('');
-                }}
-                keyboardType="phone-pad"
-              />
-            </View>
-          </View>
+     <Text style={styles.label}>{t('addTenant.nid')}</Text>
+<TextInput
+  {...focusProps('nid')}
+  style={styles.input}
+  placeholder={t('addTenant.nidPlaceholder')}
+  placeholderTextColor={colors.muted}
+  value={nid}
+  onChangeText={setNid}
+  keyboardType="number-pad"
+/>
 
+<Text style={styles.label}>{t('common.phone')}</Text>
+<View style={styles.phoneFieldRow}>
+  <TouchableOpacity
+    style={styles.countryButtonSmall}
+    onPress={openCountryPicker}
+    activeOpacity={0.7}
+  >
+    <Text style={styles.countryFlagSmall}>{country.flag}</Text>
+    <Text style={styles.countryDialCodeSmall}>{country.dialCode}</Text>
+  </TouchableOpacity>
+  <TextInput
+    {...focusProps('phone')}
+    style={[styles.input, styles.phoneInputSmall]}
+    placeholder={t('addTenant.phonePlaceholder')}
+    placeholderTextColor={colors.muted}
+    value={phone}
+    onChangeText={(t) => {
+      setPhone(t);
+      if (error) setError('');
+    }}
+    keyboardType="phone-pad"
+  />
+</View>
           <Text style={styles.label}>
             {t('common.email')} <Text style={styles.labelSoft}>{t('form.optional')}</Text>
           </Text>
@@ -577,10 +650,7 @@ export default function AddTenantsScreen({ onNavigate }) {
           <Text style={styles.label}>{t('addTenant.dob')}</Text>
           <TouchableOpacity
             style={styles.dropdownButton}
-            onPress={() => {
-              Keyboard.dismiss();
-              setActiveDateField('dob');
-            }}
+            onPress={() => openDatePicker('dob', dob)}
             activeOpacity={0.7}
           >
             <Text style={dob ? styles.dropdownValue : styles.dropdownPlaceholder}>
@@ -635,10 +705,7 @@ export default function AddTenantsScreen({ onNavigate }) {
              <Text style={styles.label}>{t('addTenant.startDate')}</Text>
               <TouchableOpacity
                 style={styles.dropdownButton}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setActiveDateField('startDate');
-                }}
+                onPress={() => openDatePicker('startDate', startDate)}
                 activeOpacity={0.7}
               >
                 <Text
@@ -654,17 +721,14 @@ export default function AddTenantsScreen({ onNavigate }) {
               <Text style={styles.label}>{t('addTenant.endDate')}</Text>
               <TouchableOpacity
                 style={styles.dropdownButton}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setActiveDateField('endDate');
-                }}
+                onPress={() => openDatePicker('endDate', endDate)}
                 activeOpacity={0.7}
               >
                 <Text
                   style={endDate ? styles.dropdownValue : styles.dropdownPlaceholder}
                   numberOfLines={1}
                 >
-                 {startDate ? formatDate(startDate) : t('form.selectDate')}
+                 {endDate ? formatDate(endDate) : t('form.selectDate')}
                 </Text>
                 <Ionicons name="calendar-outline" size={18} color={colors.muted} />
               </TouchableOpacity>
@@ -917,6 +981,68 @@ export default function AddTenantsScreen({ onNavigate }) {
         }}
         onRequestClose={() => setModal(null)}
       />
+      {/* Country picker modal — separate from the generic property/floor/
+    flat/tenantType/religion dropdown system above, since this one needs
+    to store a whole {code, name, dialCode, flag} object rather than a
+    plain string value. */}
+<Modal
+  visible={countryPickerOpen}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setCountryPickerOpen(false)}
+>
+  <Pressable style={styles.overlay} onPress={() => setCountryPickerOpen(false)}>
+    <Pressable style={styles.sheet} onPress={() => {}}>
+      <View style={styles.sheetGrabber} />
+      <Text style={styles.sheetTitle}>Select Country</Text>
+
+      <View style={styles.searchWrap}>
+        <Ionicons name="search" size={16} color={colors.muted} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search country or code"
+          placeholderTextColor={colors.muted}
+          value={countrySearch}
+          onChangeText={setCountrySearch}
+          autoFocus
+        />
+        {countrySearch.length > 0 && (
+          <TouchableOpacity onPress={() => setCountrySearch('')} hitSlop={8}>
+            <Ionicons name="close-circle" size={16} color={colors.muted} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <FlatList
+        data={filteredCountries}
+        keyExtractor={(item) => item.code}
+        keyboardShouldPersistTaps="handled"
+        style={styles.optionsScroll}
+        contentContainerStyle={styles.optionsScrollContent}
+        initialNumToRender={20}
+        windowSize={10}
+        ListEmptyComponent={<Text style={styles.emptyText}>{t('form.noMatches')}</Text>}
+        renderItem={({ item }) => {
+          const active = country.code === item.code;
+          return (
+            <TouchableOpacity
+              style={[styles.optionRow, active && styles.optionRowActive]}
+              onPress={() => handleSelectCountry(item)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.countryFlagOption}>{item.flag}</Text>
+              <Text style={[styles.optionLabel, active && styles.optionLabelActive]} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.countryDialCodeOption}>{item.dialCode}</Text>
+              {active ? <Ionicons name="checkmark" size={18} color={colors.primary} /> : null}
+            </TouchableOpacity>
+          );
+        }}
+      />
+    </Pressable>
+  </Pressable>
+</Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1261,4 +1387,42 @@ const styles = StyleSheet.create({
   optionLabelActive: {
     color: colors.primary,
   },
+  phoneFieldRow: {
+  flexDirection: 'row',
+  gap: 6,
+  marginBottom: 16,
+},
+countryButtonSmall: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 5,
+  borderWidth: 1.5,
+  borderColor: colors.border,
+  borderRadius: 12,
+  backgroundColor: '#fafbfc',
+  paddingHorizontal: 14,
+  minWidth: 88,
+  justifyContent: 'center',
+},
+countryFlagSmall: {
+  fontSize: 15,
+},
+countryDialCodeSmall: {
+  fontSize: 14,
+  color: colors.text,
+  fontFamily: 'Manrope-SemiBold',
+},
+phoneInputSmall: {
+  flex: 1,
+  marginBottom: 0,
+},
+countryFlagOption: {
+  fontSize: 18,
+},
+countryDialCodeOption: {
+  fontSize: 12.5,
+  color: colors.muted,
+  fontFamily: 'Manrope-SemiBold',
+  marginRight: 2,
+},
 });

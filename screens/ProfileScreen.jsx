@@ -3,6 +3,8 @@ import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../providers/AuthProvider';
 import { useLanguage } from '../providers/LanguageProvider';
+import { useInterfaceMode } from '../providers/InterfaceModeProvider';
+import { INTERFACE_LABELS } from '../utils/accessControl';
 import { colors } from '../theme';
 import config from '../config';
 import { useLogoutConfirm } from '../providers/LogoutConfirmProvider';
@@ -11,6 +13,7 @@ export default function ProfileScreen() {
   const { loginData } = useContext(AuthContext);
   const { t } = useLanguage();
   const { requestLogout } = useLogoutConfirm();
+  const { activeInterface, availableInterfaces, setActiveInterface } = useInterfaceMode();
 
   const name = loginData?.Name?.trim() || t('profile.defaultName');
   const initials = name
@@ -21,13 +24,21 @@ export default function ProfileScreen() {
     .join('')
     .toUpperCase();
 
-  // ImgPath may be a full URL or a relative path returned by the API —
-  // handle both. If it's empty/null, fall back to an initials avatar below.
   const imageUri = loginData?.ImgPath
     ? loginData.ImgPath.startsWith('http')
       ? loginData.ImgPath
       : `${config.BMS_API}${loginData.ImgPath}`
     : null;
+
+  const roles = loginData?.UserRoles || [];
+  const activeInterfaceLabel = INTERFACE_LABELS[activeInterface] || null;
+
+  const canSwitchInterfaces = availableInterfaces.length > 1;
+  const currentIndex = availableInterfaces.indexOf(activeInterface);
+  const nextInterface = canSwitchInterfaces
+    ? availableInterfaces[(currentIndex + 1) % availableInterfaces.length]
+    : null;
+  const nextInterfaceLabel = nextInterface ? INTERFACE_LABELS[nextInterface] : null;
 
   const infoRows = [
     { icon: 'call-outline', label: t('common.phone'), value: loginData?.Phone },
@@ -39,7 +50,7 @@ export default function ProfileScreen() {
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
       <View style={styles.headingRow}>
         <View style={styles.iconWrap}>
-          <Ionicons name="person-outline" size={20} color={colors.primary} />
+          <Ionicons name="person-outline" size={16} color={colors.primary} />
         </View>
         <View>
           <Text style={styles.eyebrow}>{t('profile.eyebrow')}</Text>
@@ -47,7 +58,8 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      <View style={styles.card}>
+      {/* Hero section — big centered avatar, compressed padding */}
+      <View style={styles.heroCard}>
         <View style={styles.avatarWrap}>
           {imageUri ? (
             <Image source={{ uri: imageUri }} style={styles.avatarImage} />
@@ -59,38 +71,75 @@ export default function ProfileScreen() {
         </View>
 
         <Text style={styles.name}>{name}</Text>
-        {loginData?.UserRole ? (
-          <View style={styles.rolePill}>
-            <Text style={styles.roleText}>{loginData.UserRole}</Text>
+
+        {roles.length > 0 ? (
+          <View style={styles.roleRow}>
+            {roles.map((role) => (
+              <View key={role} style={styles.rolePill}>
+                <Text style={styles.roleText}>{role}</Text>
+              </View>
+            ))}
           </View>
         ) : null}
       </View>
 
-      <View style={styles.infoCard}>
+      {/* Contact info group */}
+      <Text style={styles.sectionLabel}>{t('profile.contactInfo')}</Text>
+      <View style={styles.listCard}>
         {infoRows.length === 0 ? (
           <Text style={styles.emptyText}>{t('profile.noDetails')}</Text>
         ) : (
           infoRows.map((row, index) => (
             <View
               key={row.label}
-              style={[styles.infoRow, index !== infoRows.length - 1 && styles.infoRowDivider]}
+              style={[styles.listRow, index !== infoRows.length - 1 && styles.listRowDivider]}
             >
-              <View style={styles.infoIconWrap}>
-                <Ionicons name={row.icon} size={16} color={colors.primary} />
+              <View style={styles.listRowIconWrap}>
+                <Ionicons name={row.icon} size={14} color={colors.primary} />
               </View>
-              <View style={styles.infoTextWrap}>
-                <Text style={styles.infoLabel}>{row.label}</Text>
-                <Text style={styles.infoValue}>{row.value}</Text>
+              <View style={styles.listRowTextWrap}>
+                <Text style={styles.listRowLabel}>{row.label}</Text>
+                <Text style={styles.listRowValue} numberOfLines={1}>
+                  {row.value}
+                </Text>
               </View>
             </View>
           ))
         )}
       </View>
 
-      <TouchableOpacity style={styles.logoutButton} onPress={requestLogout} activeOpacity={0.85}>
-        <Ionicons name="log-out-outline" size={18} color={colors.error} />
-        <Text style={styles.logoutLabel}>{t('profile.logout')}</Text>
-      </TouchableOpacity>
+      {/* Account group — role switch + logout */}
+      <Text style={styles.sectionLabel}>{t('profile.account')}</Text>
+      <View style={styles.listCard}>
+        {canSwitchInterfaces ? (
+          <TouchableOpacity
+            style={[styles.listRow, styles.listRowDivider]}
+            onPress={() => setActiveInterface(nextInterface)}
+            activeOpacity={0.65}
+          >
+            <View style={styles.listRowIconWrap}>
+              <Ionicons name="swap-horizontal-outline" size={14} color={colors.primary} />
+            </View>
+            <View style={styles.listRowTextWrap}>
+              <Text style={styles.listRowLabel}>
+                {t('profile.viewingAs')} {activeInterfaceLabel}
+              </Text>
+            </View>
+            <Text style={styles.switchAction}>
+              {t('profile.switchTo')} {nextInterfaceLabel}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        <TouchableOpacity style={styles.listRow} onPress={requestLogout} activeOpacity={0.65}>
+          <View style={[styles.listRowIconWrap, styles.listRowIconWrapDanger]}>
+            <Ionicons name="log-out-outline" size={14} color={colors.error} />
+          </View>
+          <View style={styles.listRowTextWrap}>
+            <Text style={[styles.listRowLabel, styles.logoutLabel]}>{t('profile.logout')}</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -101,141 +150,159 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   content: {
-    padding: 20,
-    paddingTop: 24,
-    paddingBottom: 40,
+    padding: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
   },
   headingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 20,
+    gap: 8,
+    marginBottom: 10,
   },
   iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: `${colors.primary}1A`,
+    width: 32,
+    height: 32,
+    borderRadius: 9,
+    backgroundColor: `${colors.primary}14`,
     alignItems: 'center',
     justifyContent: 'center',
   },
   eyebrow: {
     color: colors.primary,
-    fontSize: 11,
+    fontSize: 9,
     fontFamily: 'Manrope-Bold',
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
   },
   title: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 16,
     fontFamily: 'Manrope-ExtraBold',
-    marginTop: 2,
+    marginTop: 1,
   },
-  card: {
+
+  heroCard: {
     backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 16,
-    padding: 24,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     alignItems: 'center',
-    marginBottom: 14,
+    marginBottom: 10,
   },
   avatarWrap: {
-    marginBottom: 14,
+    marginBottom: 8,
   },
   avatarImage: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 90,
+    height: 90,
+    borderRadius: 42,
     backgroundColor: colors.border,
   },
   avatarPlaceholder: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 90,
+    height: 90,
+    borderRadius: 44,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitials: {
     color: '#ffffff',
-    fontSize: 30,
+    fontSize: 32,
     fontFamily: 'Manrope-Bold',
   },
   name: {
     color: colors.text,
-    fontSize: 19,
+    fontSize: 18,
     fontFamily: 'Manrope-ExtraBold',
     textAlign: 'center',
+    marginBottom: 6,
+  },
+  roleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 5,
   },
   rolePill: {
-    marginTop: 8,
-    backgroundColor: `${colors.primary}1A`,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
+    backgroundColor: `${colors.primary}14`,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
   },
   roleText: {
     color: colors.primary,
     fontSize: 12,
     fontFamily: 'Manrope-Bold',
   },
-  infoCard: {
+
+  sectionLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontFamily: 'Manrope-Bold',
+    letterSpacing: 0.5,
+    marginBottom: 5,
+    marginLeft: 2,
+  },
+  listCard: {
     backgroundColor: colors.surface,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    marginBottom: 10,
+    overflow: 'hidden',
   },
   emptyText: {
     color: colors.muted,
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: 'Manrope-Regular',
-    paddingVertical: 18,
+    paddingVertical: 12,
     textAlign: 'center',
   },
-  infoRow: {
+  listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
-  infoRowDivider: {
+  listRowDivider: {
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  infoIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: `${colors.primary}1A`,
+  listRowIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: `${colors.primary}14`,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  infoTextWrap: {
+  listRowIconWrapDanger: {
+    backgroundColor: `${colors.error}14`,
+  },
+  listRowTextWrap: {
     flex: 1,
   },
-  infoLabel: {
-    color: colors.muted,
-    fontSize: 11,
-    fontFamily: 'Manrope-SemiBold',
-    marginBottom: 2,
-  },
-  infoValue: {
+  listRowLabel: {
     color: colors.text,
-    fontSize: 14,
+    fontSize: 12.5,
     fontFamily: 'Manrope-SemiBold',
   },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1.5,
-    borderColor: colors.error,
-    borderRadius: 10,
-    paddingVertical: 13,
+  listRowValue: {
+    color: colors.muted,
+    fontSize: 13,
+    fontFamily: 'Manrope-Regular',
+    marginTop: 0.5,
+  },
+  switchAction: {
+    color: colors.primary,
+    fontSize: 12,
+    fontFamily: 'Manrope-Bold',
   },
   logoutLabel: {
     color: colors.error,
-    fontSize: 14,
-    fontFamily: 'Manrope-Bold',
   },
 });

@@ -10,6 +10,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../providers/AuthProvider';
 import { useLanguage } from '../providers/LanguageProvider';
+import { useInterfaceMode } from '../providers/InterfaceModeProvider';
+import { INTERFACE_LABELS } from '../utils/accessControl';
 import { colors } from '../theme';
 import { useGreeting } from '../hooks/useGreeting';
 import { useLogoutConfirm } from '../providers/LogoutConfirmProvider';
@@ -19,16 +21,24 @@ export default function Navbar({ onMenuPress, onSelectMenu }) {
   const { lang, t, toggleLanguage } = useLanguage();
   const greetingText = useGreeting();
   const { requestLogout } = useLogoutConfirm();
+  const { activeInterface, availableInterfaces, setActiveInterface } = useInterfaceMode();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const displayName = loginData?.Name || loginData?.UserId || t('nav.user');
   const initials = displayName.slice(0, 2).toUpperCase();
-  const isClient = loginData?.UserRole?.toLowerCase() === 'client';
+  const activeRoleLabel = INTERFACE_LABELS[activeInterface] || null;
+  const isClient = activeRoleLabel?.toLowerCase() === 'client';
 
-  // Language names shown in their own script — these are proper nouns for
-  // the language itself, not translatable UI copy, so they aren't run
-  // through t().
-  const targetLanguageLabel = lang === 'bn' ? 'English' : 'বাংলা';
+  // Only shown when the user actually holds more than one interface —
+  // someone with just Admin (or just SuperAdmin alone) never sees this.
+  const canSwitchInterfaces = availableInterfaces.length > 1;
+
+  // Same "shows the target, not the current" pattern the role-switch
+  // button already uses — one tap swaps directly, cycling through every
+  // interface the user holds.
+  const currentIndex = availableInterfaces.indexOf(activeInterface);
+  const nextInterface = availableInterfaces[(currentIndex + 1) % availableInterfaces.length];
+  const nextInterfaceLabel = INTERFACE_LABELS[nextInterface];
 
   const dropdownItems = [
     { key: 'home', label: t('nav.dashboard'), icon: 'grid-outline' },
@@ -46,6 +56,14 @@ export default function Navbar({ onMenuPress, onSelectMenu }) {
   function handleLogout() {
     setMenuOpen(false);
     requestLogout();
+  }
+
+  function handleToggleInterface() {
+    setActiveInterface(nextInterface);
+  }
+
+  function handleSetLanguage(target) {
+    if (lang !== target) toggleLanguage();
   }
 
   return (
@@ -69,9 +87,9 @@ export default function Navbar({ onMenuPress, onSelectMenu }) {
             <Text style={styles.greeting} numberOfLines={1}>
               {displayName}
             </Text>
-            {loginData?.UserRole ? (
+            {activeRoleLabel ? (
               <Text style={styles.roleText} numberOfLines={1}>
-                {loginData.UserRole}
+                {activeRoleLabel}
               </Text>
             ) : null}
           </View>
@@ -80,17 +98,19 @@ export default function Navbar({ onMenuPress, onSelectMenu }) {
 
         <View style={styles.spacer} />
 
-        <TouchableOpacity
-          style={styles.langButton}
-          onPress={toggleLanguage}
-          hitSlop={8}
-          activeOpacity={0.65}
-        >
-          <Ionicons name="language" size={15} color={colors.primaryDark} />
-          <Text style={styles.langLabel} numberOfLines={1}>
-            {targetLanguageLabel}
-          </Text>
-        </TouchableOpacity>
+        {canSwitchInterfaces ? (
+          <TouchableOpacity
+            style={styles.switchButton}
+            onPress={handleToggleInterface}
+            hitSlop={8}
+            activeOpacity={0.65}
+          >
+            <Ionicons name="swap-horizontal" size={14} color={colors.primaryDark} />
+            <Text style={styles.switchButtonLabel} numberOfLines={1}>
+              {nextInterfaceLabel}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity
           style={styles.iconButton}
@@ -133,13 +153,52 @@ export default function Navbar({ onMenuPress, onSelectMenu }) {
                   <Text style={styles.dropdownName} numberOfLines={1}>
                     {displayName}
                   </Text>
-                  {loginData?.UserRole ? (
+                  {activeRoleLabel ? (
                     <View style={styles.rolePill}>
                       <Text style={styles.rolePillText} numberOfLines={1}>
-                        {loginData.UserRole}
+                        {activeRoleLabel}
                       </Text>
                     </View>
                   ) : null}
+                </View>
+              </View>
+
+              <View style={styles.dropdownDivider} />
+
+              {/* Language toggle — moved here from the top row. Same
+                  segmented-control pattern as elsewhere in the app: shows
+                  both states at once, active one filled, one tap on the
+                  inactive side switches instantly. */}
+              <View style={styles.dropdownGroup}>
+                <View style={styles.dropdownItem}>
+                  <View style={styles.dropdownItemIconWrap}>
+                    <Ionicons name="language-outline" size={16} color={colors.text} />
+                  </View>
+                  <Text style={styles.dropdownLabel}>{t('nav.language')}</Text>
+                  <View style={styles.langSegment}>
+                    <TouchableOpacity
+                      style={[styles.langSegmentOption, lang === 'bn' && styles.langSegmentOptionActive]}
+                      onPress={() => handleSetLanguage('bn')}
+                      activeOpacity={0.75}
+                    >
+                      <Text
+                        style={[styles.langSegmentText, lang === 'bn' && styles.langSegmentTextActive]}
+                      >
+                        বাংলা
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.langSegmentOption, lang === 'en' && styles.langSegmentOptionActive]}
+                      onPress={() => handleSetLanguage('en')}
+                      activeOpacity={0.75}
+                    >
+                      <Text
+                        style={[styles.langSegmentText, lang === 'en' && styles.langSegmentTextActive]}
+                      >
+                        ENG
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 
@@ -203,8 +262,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-
-  /* IDENTITY (avatar + name + role) */
   identity: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -217,7 +274,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 34,
     height: 34,
-    borderRadius: '100%',
+    borderRadius: 17,
     backgroundColor: colors.primaryDark,
     alignItems: 'center',
     justifyContent: 'center',
@@ -260,29 +317,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope-Medium',
     marginTop: 1,
   },
-
   spacer: {
     flex: 1,
   },
-
-  /* RIGHT-SIDE CONTROLS */
-  langButton: {
+  switchButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    width: 72,
+    gap: 4,
     height: 28,
     borderRadius: 5,
     backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: `${colors.primary}22`,
+    borderColor: `${colors.primaryDark}22`,
+    paddingHorizontal: 9,
+    marginRight: 6,
   },
-  langLabel: {
+  switchButtonLabel: {
     color: colors.primaryDark,
-    fontSize: 9.5,
+    fontSize: 10.5,
     fontFamily: 'Manrope-ExtraBold',
-    textAlign: 'center',
   },
   iconButton: {
     width: 30,
@@ -304,8 +358,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.surface,
   },
-
-  /* DROPDOWN OVERLAY */
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(15,23,42,0.32)',
@@ -420,9 +472,33 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     fontFamily: 'Manrope-SemiBold',
+    flex: 1,
   },
   dropdownLabelDanger: {
     color: colors.error,
     fontFamily: 'Manrope-Bold',
+  },
+  langSegment: {
+    flexDirection: 'row',
+    backgroundColor: colors.bg,
+    borderRadius: 20,
+    padding: 2,
+    gap: 2,
+  },
+  langSegmentOption: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 18,
+  },
+  langSegmentOptionActive: {
+    backgroundColor: colors.primary,
+  },
+  langSegmentText: {
+    fontSize: 10,
+    fontFamily: 'Manrope-Bold',
+    color: colors.muted,
+  },
+  langSegmentTextActive: {
+    color: '#ffffff',
   },
 });
