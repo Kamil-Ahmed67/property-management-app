@@ -106,9 +106,9 @@ export default function Navbar({ onMenuPress, onSelectMenu }) {
             activeOpacity={0.65}
           >
             <Ionicons name="swap-horizontal" size={14} color={colors.primaryDark} />
-            <Text style={styles.switchButtonLabel} numberOfLines={1}>
-              {nextInterfaceLabel}
-            </Text>
+           <Text style={styles.switchButtonLabel} numberOfLines={1}>
+          {activeRoleLabel}
+         </Text>
           </TouchableOpacity>
         ) : null}
 
@@ -491,7 +491,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   langSegmentOptionActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.teal,
   },
   langSegmentText: {
     fontSize: 10,

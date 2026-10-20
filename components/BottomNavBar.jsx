@@ -29,7 +29,7 @@ export default function BottomNavBar({ currentScreen, onSelect }) {
             <Ionicons
               name={active ? tab.icon : tab.iconOutline}
               size={22}
-              color={active ? colors.primary : colors.muted}
+              color={active ? colors.teal : colors.muted}
             />
             <Text style={[styles.label, active && styles.labelActive]}>
               {t(tab.labelKey)}
@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   labelActive: {
-    color: colors.primary,
+    color: colors.teal,
     fontFamily: 'Manrope-Bold',
   },
 });

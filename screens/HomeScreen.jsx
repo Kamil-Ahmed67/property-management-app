@@ -1,5 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, StyleSheet, Linking, Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { AuthContext } from '../providers/AuthProvider';
 import { useLanguage } from '../providers/LanguageProvider';
 import { colors } from '../theme';
@@ -15,6 +16,9 @@ import ConnectionRequestsScreen from './ConnectionRequestsScreen';
 import { useScrollMemory } from '../hooks/useScrollMemory';
 
 const TENANT_ID = 'PropHub';
+
+// Support WhatsApp number — digits only, country code included, no "+"
+const SUPPORT_WHATSAPP = '8801XXXXXXXXX';
 
 const MONTH_VALUES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -136,6 +140,46 @@ export default function HomeScreen({ onNavigate }) {
     return t(MONTH_KEYS[monthNumber - 1]);
   }
 
+  // ---------------------------------------------------------------
+  // Feedback
+  // ---------------------------------------------------------------
+
+  // FeedbackSheet awaits this. If it throws, the sheet shows the error
+  // message inside itself and stays open (e.g. the "recently sent"
+  // rate-limit message coming back from SP_Feedback).
+  async function handleFeedbackSubmit({ rating, category, message, email }) {
+    const response = await fetch(`${config.BMS_API}api/SubmitFeedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', TenantId: TENANT_ID },
+      body: JSON.stringify({
+        UId: loginData?.Id,
+        Phone: phone,
+        UserRole: loginData?.UserRole || 'Landlord',
+        Rating: rating,
+        Category: category,
+        Message: message,
+        Email: email,
+        Platform: Platform.OS,
+        AppVersion: Constants.expoConfig?.version || '',
+        EntryBy: loginData?.Name || phone,
+      }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || (data && data.success === false)) {
+      throw new Error((data && data.message) || t('feedback.errorDefault'));
+    }
+  }
+
+  function handleWhatsApp() {
+    const text = encodeURIComponent(t('feedback.whatsappText'));
+    Linking.openURL(`https://wa.me/${SUPPORT_WHATSAPP}?text=${text}`).catch(() => {});
+  }
+
+  // ---------------------------------------------------------------
+  // Data
+  // ---------------------------------------------------------------
+
   async function safeFetchJson(url) {
     try {
       const response = await fetch(url, { headers: { TenantId: TENANT_ID } });
@@ -220,7 +264,8 @@ export default function HomeScreen({ onNavigate }) {
   return (
     <ScrollView {...scrollProps} style={styles.page} contentContainerStyle={styles.content}>
       <PrayerTimesCard />
-        <View style={styles.modeWrap}>
+
+      <View style={styles.modeWrap}>
         <HomeModeToggle mode={homeMode} onChange={setHomeMode} options={modeOptions} />
 
         {homeMode === 'requests' ? (
@@ -232,6 +277,7 @@ export default function HomeScreen({ onNavigate }) {
           />
         ) : null}
       </View>
+
       <BillStatusRow
         income={totalCollected}
         expense={totalExpense}
@@ -239,6 +285,7 @@ export default function HomeScreen({ onNavigate }) {
         unitsCount={unitsCount}
         expenseCount={expenseCount}
       />
+
       <SectionGrid
         title={t('home.propertyManagement')}
         items={localize(propertySection)}
@@ -253,7 +300,7 @@ export default function HomeScreen({ onNavigate }) {
         paletteOffset={1}
       />
 
-      <FeedbackCard onSubmit={() => onNavigate?.('feedback')} />
+      <FeedbackCard onSubmit={handleFeedbackSubmit} onWhatsApp={handleWhatsApp} />
     </ScrollView>
   );
 }

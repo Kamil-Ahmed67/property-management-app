@@ -41,16 +41,16 @@ const CATEGORY_CARDS = [
     arrowBg: '#E8F0FE',
     arrowColor: '#1A73E8',
   },
-  {
-    key: 'find-service',
-    title: 'সার্ভিস খুঁজুন',
-    subtitle: 'প্রয়োজনীয় সেবা খুঁজে নিন',
-    icon: 'construct-outline',
-    iconBg: '#F3E8FF',
-    iconColor: '#9333EA',
-    arrowBg: '#F3E8FF',
-    arrowColor: '#9333EA',
-  },
+  // {
+  //   key: 'find-service',
+  //   title: 'সার্ভিস খুঁজুন',
+  //   subtitle: 'প্রয়োজনীয় সেবা খুঁজে নিন',
+  //   icon: 'construct-outline',
+  //   iconBg: '#F3E8FF',
+  //   iconColor: '#9333EA',
+  //   arrowBg: '#F3E8FF',
+  //   arrowColor: '#9333EA',
+  // },
 ];
 
 export default function ExploreScreen({ onRequireLogin }) {

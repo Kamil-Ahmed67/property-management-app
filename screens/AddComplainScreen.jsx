@@ -9,6 +9,23 @@ import StatusModal from '../components/StatusModal';
 
 const TENANT_ID = 'PropHub';
 
+// Banner text for the tenancy.
+//  - Linked to a landlord's property:  "PropertyName — FlatName (Floor)"
+//  - Added by the tenant (no PropertyId): "PropertyNameText (UnitNoText)"
+function tenancyLabel(tenancy) {
+  if (!tenancy) return '';
+
+  if (tenancy.PropertyName) {
+    const flat = tenancy.FlatName || tenancy.UnitNoText || '';
+    const floor = tenancy.Floor ? ` (${tenancy.Floor})` : '';
+    return flat ? `${tenancy.PropertyName} — ${flat}${floor}` : tenancy.PropertyName;
+  }
+
+  const name = tenancy.PropertyNameText || '';
+  const unit = tenancy.UnitNoText || tenancy.FlatName || '';
+  return unit ? `${name} (${unit})` : name;
+}
+
 export default function AddComplainScreen({ onNavigate }) {
   const { loginData } = useContext(AuthContext);
   const { t } = useLanguage();
@@ -114,7 +131,7 @@ export default function AddComplainScreen({ onNavigate }) {
         <View style={styles.tenancyBanner}>
           <Ionicons name="business-outline" size={15} color={colors.primary} />
           <Text style={styles.tenancyBannerText} numberOfLines={1}>
-            {tenancy.PropertyName} — {tenancy.FlatName} ({tenancy.Floor})
+            {tenancyLabel(tenancy)}
           </Text>
         </View>
       ) : (

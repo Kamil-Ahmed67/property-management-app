@@ -1,11 +1,12 @@
 import { useContext, useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthContext } from '../providers/AuthProvider';
 import { useLanguage } from '../providers/LanguageProvider';
 import { formatDate, formatMoney } from '../utils/localeFormat';
 import { colors } from '../theme';
 import config from '../config';
+import StatusModal from '../components/StatusModal';
 
 const TENANT_ID = 'PropHub';
 
@@ -55,6 +56,9 @@ export default function TenantDetailScreen({ tenantId }) {
 
   const [tenant, setTenant] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [movingOut, setMovingOut] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [resultModal, setResultModal] = useState(null);
 
   useEffect(() => {
     if (!phone || !tenantId) {
@@ -65,7 +69,7 @@ export default function TenantDetailScreen({ tenantId }) {
     (async () => {
       try {
         const response = await fetch(
-         `${config.BMS_API}api/GetTenantList?phone=${encodeURIComponent(phone)}&uId=${loginData?.Id}`,
+          `${config.BMS_API}api/GetTenantList?phone=${encodeURIComponent(phone)}&uId=${loginData?.Id}`,
           { headers: { TenantId: TENANT_ID } }
         );
         const data = await response.json().catch(() => null);
@@ -93,6 +97,45 @@ export default function TenantDetailScreen({ tenantId }) {
     return key ? t(key) : value;
   }
 
+  async function handleMoveOut() {
+    setConfirmVisible(false);
+    setMovingOut(true);
+    try {
+      const response = await fetch(`${config.BMS_API}api/MoveOutTenant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', TenantId: TENANT_ID },
+        body: JSON.stringify({
+          TenantId: tenant.Id,
+          UId: loginData?.Id,
+          EntryBy: loginData?.Name || phone,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok || (data && data.success === false)) {
+        throw new Error((data && data.message) || t('tenantDetail.moveOutFailed'));
+      }
+      // আবার fetch না করেই স্ক্রিনে Vacant দেখাবে
+      setTenant((prev) => ({
+        ...prev,
+        ConnectionStatus: 'Disconnected',
+        EndDate: new Date().toISOString(),
+      }));
+      setResultModal({
+        type: 'success',
+        title: t('tenantDetail.movedOutTitle'),
+        message: t('tenantDetail.movedOutMsg'),
+      });
+    } catch (err) {
+      setResultModal({
+        type: 'error',
+        title: t('form.couldNotSave'),
+        message: err.message || t('tenantDetail.moveOutFailed'),
+      });
+    } finally {
+      setMovingOut(false);
+    }
+  }
+
   if (loading) {
     return (
       <View style={styles.centerFill}>
@@ -110,17 +153,22 @@ export default function TenantDetailScreen({ tenantId }) {
     );
   }
 
-  // No real PropertyId/PropDetailsId — this tenant was added via a
-  // manual connection-request accept, so the property/unit shown is
-  // exactly whatever the tenant typed themselves, not verified against
-  // real inventory.
+  // No real PropertyId — added via manual connection-request accept,
+  // so property/unit is whatever the tenant typed themselves.
   const isTenantProvided = !tenant.PropertyId;
+  const isMovedOut = tenant.ConnectionStatus === 'Disconnected';
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={[styles.headerCard, isTenantProvided && styles.headerCardTenantProvided]}>
-        <View style={[styles.avatar, isTenantProvided && styles.avatarTenantProvided]}>
+        <View
+          style={[
+            styles.avatar,
+            isTenantProvided && styles.avatarTenantProvided,
+            isMovedOut && styles.avatarMovedOut,
+          ]}
+        >
           <Text style={styles.avatarText}>
             {(tenant.TenantName || '?').slice(0, 1).toUpperCase()}
           </Text>
@@ -135,6 +183,12 @@ export default function TenantDetailScreen({ tenantId }) {
           <View style={styles.providedBadge}>
             <Ionicons name="information-circle-outline" size={12} color={colors.accent} />
             <Text style={styles.providedBadgeText}>{t('tenantList.tenantProvided')}</Text>
+          </View>
+        ) : null}
+        {isMovedOut ? (
+          <View style={styles.movedOutBadge}>
+            <Ionicons name="exit-outline" size={12} color={colors.error} />
+            <Text style={styles.movedOutBadgeText}>{t('tenantDetail.movedOutBadge')}</Text>
           </View>
         ) : null}
       </View>
@@ -156,7 +210,7 @@ export default function TenantDetailScreen({ tenantId }) {
         />
       </SectionCard>
 
-      {/* Property + flat details */}
+      {/* Property + flat */}
       <SectionCard title={t('tenantDetail.propertyUnit')}>
         <InfoRow
           icon="business-outline"
@@ -164,11 +218,7 @@ export default function TenantDetailScreen({ tenantId }) {
           value={tenant.DisplayPropertyName}
         />
         {!isTenantProvided ? (
-          <InfoRow
-            icon="location-outline"
-            label={t('common.address')}
-            value={tenant.PropertyAddress}
-          />
+          <InfoRow icon="location-outline" label={t('common.address')} value={tenant.PropertyAddress} />
         ) : null}
         <InfoRow icon="home-outline" label={t('tenantDetail.flat')} value={tenant.DisplayUnitNo} />
         {!isTenantProvided ? (
@@ -202,6 +252,48 @@ export default function TenantDetailScreen({ tenantId }) {
         <InfoRow icon="people-outline" label={t('tenantDetail.relation')} value={tenant.ERelation} />
         <InfoRow icon="location-outline" label={t('common.address')} value={tenant.EAddress} />
       </SectionCard>
+
+      {/* Move out */}
+      {!isMovedOut ? (
+        <TouchableOpacity
+          style={styles.moveOutButton}
+          onPress={() => setConfirmVisible(true)}
+          disabled={movingOut}
+          activeOpacity={0.75}
+        >
+          {movingOut ? (
+            <ActivityIndicator color={colors.error} />
+          ) : (
+            <>
+              <Ionicons name="exit-outline" size={16} color={colors.error} />
+              <Text style={styles.moveOutText}>{t('tenantDetail.moveOut')}</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      ) : null}
+
+      <StatusModal
+        visible={confirmVisible}
+        type="error"
+        icon="help-circle"
+        title={t('tenantDetail.moveOutConfirmTitle')}
+        message={t('tenantDetail.moveOutConfirmMsg')}
+        actionLabel={t('tenantDetail.moveOutYes')}
+        secondaryLabel={t('common.cancel')}
+        onAction={handleMoveOut}
+        onSecondary={() => setConfirmVisible(false)}
+        onRequestClose={() => setConfirmVisible(false)}
+      />
+
+      <StatusModal
+        visible={!!resultModal}
+        type={resultModal?.type}
+        title={resultModal?.title}
+        message={resultModal?.message}
+        actionLabel={t('form.done')}
+        onAction={() => setResultModal(null)}
+        onRequestClose={() => setResultModal(null)}
+      />
     </ScrollView>
   );
 }
@@ -219,17 +311,14 @@ const styles = StyleSheet.create({
     alignItems: 'center', marginBottom: 16,
   },
   headerCardTenantProvided: {
-    borderWidth: 1.5,
-    borderColor: colors.accent,
-    borderStyle: 'dashed',
+    borderWidth: 1.5, borderColor: colors.accent, borderStyle: 'dashed',
   },
   avatar: {
     width: 64, height: 64, borderRadius: 32, backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center', marginBottom: 10,
   },
-  avatarTenantProvided: {
-    backgroundColor: colors.accent,
-  },
+  avatarTenantProvided: { backgroundColor: colors.accent },
+  avatarMovedOut: { backgroundColor: colors.muted },
   avatarText: { color: '#ffffff', fontSize: 24, fontFamily: 'Manrope-Bold' },
   tenantName: { color: colors.text, fontSize: 18, fontFamily: 'Manrope-ExtraBold', textAlign: 'center' },
   typePill: {
@@ -243,6 +332,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 5, marginTop: 8,
   },
   providedBadgeText: { color: colors.accent, fontSize: 11, fontFamily: 'Manrope-Bold' },
+  movedOutBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: `${colors.error}14`, borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 5, marginTop: 8,
+  },
+  movedOutBadgeText: { color: colors.error, fontSize: 11, fontFamily: 'Manrope-Bold' },
   sectionCard: {
     backgroundColor: colors.surface, borderRadius: 16, padding: 16, marginBottom: 14,
   },
@@ -258,4 +353,10 @@ const styles = StyleSheet.create({
   infoTextWrap: { flex: 1 },
   infoLabel: { color: colors.muted, fontSize: 11, fontFamily: 'Manrope-SemiBold', marginBottom: 1 },
   infoValue: { color: colors.text, fontSize: 14, fontFamily: 'Manrope-SemiBold' },
+  moveOutButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1.5, borderColor: colors.error, borderRadius: 12,
+    paddingVertical: 13, marginTop: 4,
+  },
+  moveOutText: { color: colors.error, fontSize: 13.5, fontFamily: 'Manrope-Bold' },
 });

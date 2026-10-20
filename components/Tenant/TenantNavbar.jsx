@@ -104,8 +104,8 @@ export default function TenantNavbar({ onSelectMenu }) {
           >
             <Ionicons name="swap-horizontal" size={14} color={colors.primaryDark} />
             <Text style={styles.switchButtonLabel} numberOfLines={1}>
-              {nextInterfaceLabel}
-            </Text>
+           {activeRoleLabel}
+           </Text>
           </TouchableOpacity>
         ) : null}
 

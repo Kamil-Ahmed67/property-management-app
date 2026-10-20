@@ -5,24 +5,37 @@ import { colors } from '../../theme';
 // lives in the navbar and actually swaps to the Owner app). This just
 // toggles which content shows inline on the dashboard.
 //
-// Shared by both sides: the tenant dashboard uses the default options
-// (no change needed at its call site); the landlord dashboard passes its
-// own options, with an optional badge on a segment.
+// Shared by both sides. Each segment's active colour follows WHO it is
+// about: tenant-related segments use colors.primary, landlord-related
+// segments use colors.teal. An option can still override this with its
+// own `activeColor`.
+const KEY_COLORS = {
+  tenant: colors.primary,       // tenant dashboard: "Tenant"
+  requests: colors.teal,     // landlord dashboard: "Tenant Requests"
+  landlord: colors.teal,        // landlord dashboard: "Landlord"
+  connections: colors.primary,     // tenant dashboard: "Landlord Requests"
+};
+
 const DEFAULT_OPTIONS = [
   { key: 'tenant', label: 'Tenant' },
   { key: 'connections', label: 'Landlord Requests' },
 ];
+
+function activeColorFor(opt) {
+  return opt.activeColor || KEY_COLORS[opt.key] || colors.primary;
+}
 
 export default function HomeModeToggle({ mode, onChange, options = DEFAULT_OPTIONS }) {
   return (
     <View style={styles.wrap}>
       {options.map((opt) => {
         const active = mode === opt.key;
+        const activeColor = activeColorFor(opt);
         const showBadge = Number(opt.badge) > 0;
         return (
           <TouchableOpacity
             key={opt.key}
-            style={[styles.segment, active && styles.segmentActive]}
+            style={[styles.segment, active && { backgroundColor: activeColor }]}
             onPress={() => onChange(opt.key)}
             activeOpacity={0.8}
           >
@@ -32,7 +45,7 @@ export default function HomeModeToggle({ mode, onChange, options = DEFAULT_OPTIO
               </Text>
               {showBadge ? (
                 <View style={[styles.badge, active && styles.badgeActive]}>
-                  <Text style={[styles.badgeText, active && styles.badgeTextActive]}>
+                  <Text style={[styles.badgeText, active && { color: activeColor }]}>
                     {opt.badgeText ?? opt.badge}
                   </Text>
                 </View>
@@ -55,27 +68,24 @@ const styles = StyleSheet.create({
     padding: 4,
     gap: 4,
     marginBottom: 14,
-        ...Platform.select({
-          ios: {
-            shadowColor: '#dfe8e4',
-            shadowOpacity: 0.0010,
-            shadowRadius: 6,
-            shadowOffset: { width: 0, height: 6 },
-          },
-          android: {
-            elevation: 2,
-          },
-          default: {},
-        }),
+    ...Platform.select({
+      ios: {
+        shadowColor: '#dfe8e4',
+        shadowOpacity: 0.0010,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 6 },
+      },
+      android: {
+        elevation: 2,
+      },
+      default: {},
+    }),
   },
   segment: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
-  },
-  segmentActive: {
-    backgroundColor: colors.primary,
   },
   segmentInner: {
     flexDirection: 'row',
@@ -106,8 +116,5 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
     fontFamily: 'Manrope-Bold',
-  },
-  badgeTextActive: {
-    color: colors.primary,
   },
 });

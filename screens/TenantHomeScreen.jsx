@@ -27,6 +27,9 @@ import SetupMyHomeScreen from './TenantScreen/SetupMyHomeScreen';
 import MyHomeHistoryScreen from './TenantScreen/MyHomeHistoryScreen';
 import MyConnectionsScreen from './TenantScreen/MyConnectionsScreen';
 import SendLandlordRequestScreen from './TenantScreen/SendLandlordRequestScreen';
+import TenantExpenseListScreen from './TenantScreen/TenantExpenseListScreen';
+import AddTenantExpenseScreen from './TenantScreen/AddTenantExpenseScreen';
+import TenantExpenseReportScreen from './TenantScreen/TenantExpenseReportScreen';
 
 const MOCK_CATEGORIES = [
   { key: 'rent', labelKey: 'category.rent', icon: 'home', color: '#EF4444', amount: 15000, status: 'paid', date: '05 Sep 2025' },
@@ -43,7 +46,8 @@ const QUICK_EXPENSE_ITEMS = [
 ];
 
 const QUICK_ACTIONS = [
-  { key: 'add-expense', labelKey: 'quickAction.addExpense', icon: 'add', color: '#10B981' },
+  { key: 'tenant-expense', labelKey: 'quickAction.addExpense', icon: 'add', color: '#10B981' },
+  { key: 'expense-reports', labelKey: 'quickAction.expenseReports', icon: 'bar-chart', color: '#0EA5E9' },
   { key: 'pay-rent', labelKey: 'quickAction.payRent', icon: 'card', color: '#3B82F6' },
   { key: 'upload-docs', labelKey: 'quickAction.uploadDocs', icon: 'document-text', color: '#7C3AED' },
   { key: 'set-reminder', labelKey: 'quickAction.setReminder', icon: 'notifications', color: '#F59E0B' },
@@ -96,6 +100,10 @@ export default function TenantHomeScreen() {
         setScreen('complain-list');
         return true;
       }
+      if (screen === 'tenant-expense-add') {
+        setScreen('tenant-expense-list');
+        return true;
+      }
       if (screen === 'add-home') {
         setScreen('dashboard');
         return true;
@@ -104,16 +112,18 @@ export default function TenantHomeScreen() {
         setScreen(requestReturn);
         return true;
       }
-      if (
-        screen === 'complain-list' ||
-        screen === 'home-detail' ||
-        screen === 'home-history' ||
-        screen === 'my-connections' ||
-        screen === 'profile'
-      ) {
-        setScreen('dashboard');
-        return true;
-      }
+if (
+  screen === 'complain-list' ||
+  screen === 'home-detail' ||
+  screen === 'home-history' ||
+  screen === 'my-connections' ||
+  screen === 'tenant-expense-list' ||
+  screen === 'expense-report' ||
+  screen === 'profile'
+) {
+  setScreen('dashboard');
+  return true;
+}
       return false;
     });
 
@@ -158,6 +168,14 @@ export default function TenantHomeScreen() {
       setScreen('complain-list');
       return;
     }
+    if (key === 'tenant-expense') {
+      setScreen('tenant-expense-list');
+      return;
+    }
+    if (key === 'expense-reports') {
+  setScreen('expense-report');
+  return;
+}
     if (key === 'more') {
       setShowMoreCard((prev) => !prev);
     }
@@ -241,6 +259,25 @@ export default function TenantHomeScreen() {
     );
   }
 
+  if (screen === 'tenant-expense-list') {
+    return (
+      <>
+        <TenantNavbar onSelectMenu={handleNavbarSelect} />
+        <TenantExpenseListScreen onAdd={() => setScreen('tenant-expense-add')} />
+        <TenantBottomNav currentScreen={activeTab} onSelect={handleNavbarSelect} />
+      </>
+    );
+  }
+
+  if (screen === 'tenant-expense-add') {
+    return (
+      <>
+        <TenantNavbar onSelectMenu={handleNavbarSelect} />
+        <AddTenantExpenseScreen onSaved={() => setScreen('tenant-expense-list')} />
+      </>
+    );
+  }
+
   if (screen === 'my-connections') {
     return (
       <>
@@ -282,7 +319,15 @@ export default function TenantHomeScreen() {
       </>
     );
   }
-
+if (screen === 'expense-report') {
+  return (
+    <>
+      <TenantNavbar onSelectMenu={handleNavbarSelect} />
+      <TenantExpenseReportScreen />
+      <TenantBottomNav currentScreen={activeTab} onSelect={handleNavbarSelect} />
+    </>
+  );
+}
   return (
     <>
       <TenantNavbar onSelectMenu={handleNavbarSelect} />
@@ -316,7 +361,7 @@ export default function TenantHomeScreen() {
                 surfaces the one remaining destination: invites sent BY
                 a landlord, entirely separate from the "Connect to
                 Landlord" flow above. */}
-            {showMoreCard ? (
+            {/* {showMoreCard ? (
               <MyTenancyQuickCard
                 icon="link-outline"
                 label="Landlord Connections"
@@ -325,7 +370,7 @@ export default function TenantHomeScreen() {
                   setScreen('my-connections');
                 }}
               />
-            ) : null}
+            ) : null} */}
 
             <TenancyStatusBanner
               visible={!home || !isConnected}

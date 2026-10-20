@@ -249,7 +249,13 @@ export default function TenantListScreen({ onNavigate, onSelectTenant }) {
                   </Text>
 
                   {/* Connection action — bottom right of the card */}
-                  {tenant.ConnectionStatus === 'Connected' ? (
+                    {tenant.ConnectionStatus === 'Disconnected' ? (
+                    <View style={styles.movedOutTag}>
+                      <Ionicons name="exit-outline" size={13} color={colors.error} />
+                      <Text style={styles.movedOutTagText}>{t('tenantDetail.movedOutBadge')}</Text>
+                    </View>
+                  ) : 
+                  tenant.ConnectionStatus === 'Connected' ? (
                     <View style={styles.connectedTag}>
                       <Ionicons name="checkmark-circle" size={13} color={colors.primary} />
                       <Text style={styles.connectedTagText}>{t('tenantList.connected')}</Text>

@@ -25,6 +25,7 @@ import { colors } from '../theme';
 import config from '../config';
 import StatusModal from '../components/StatusModal';
 import { countries } from 'countries-list';
+
 const TENANT_TYPE_OPTIONS = [
   { value: 'Family', labelKey: 'tenantType.family' },
   { value: 'Bachelor', labelKey: 'tenantType.bachelor' },
@@ -39,6 +40,7 @@ const RELIGION_OPTIONS = [
   { value: 'Buddhism', labelKey: 'religion.buddhism' },
   { value: 'Other', labelKey: 'religion.other' },
 ];
+
 const TENANT_ID = 'PropHub';
 
 function formatDate(date) {
@@ -51,6 +53,7 @@ function initials(value) {
   const parts = String(value).trim().split(/\s+/);
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || parts[0]?.[1] || '')).toUpperCase();
 }
+
 const COUNTRY_LIST = Object.entries(countries)
   .map(([code, data]) => ({
     code,
@@ -67,6 +70,7 @@ function buildFullPhone(dialCode, localNumber) {
   const trimmed = digitsOnly.startsWith('0') ? digitsOnly.slice(1) : digitsOnly;
   return `${dialCode}${trimmed}`;
 }
+
 export default function AddTenantsScreen({ onNavigate }) {
   const { loginData } = useContext(AuthContext);
   const { t } = useLanguage();
@@ -106,13 +110,13 @@ export default function AddTenantsScreen({ onNavigate }) {
   const [modal, setModal] = useState(null);
   const [activeDropdown, setActiveDropdown] = useState(null);
   const [search, setSearch] = useState('');
+  const [activeDateField, setActiveDateField] = useState(null);
 
   const scrollRef = useRef(null);
-  // Tracks the ScrollView's OWN visible height. This is the key trick:
-  // once Android is set to `resize` mode (see app.json) and iOS uses
-  // KeyboardAvoidingView, the ScrollView's box literally shrinks when the
-  // keyboard opens, and onLayout fires again with the new smaller height.
-  // No manual keyboard-height math needed anywhere.
+  // Tracks the ScrollView's OWN visible height. Once Android is set to
+  // `resize` mode (see app.json) and iOS uses KeyboardAvoidingView, the
+  // ScrollView's box shrinks when the keyboard opens and onLayout fires
+  // again with the new smaller height — no manual keyboard math needed.
   const viewportRef = useRef(0);
   const inputRefs = useRef({});
   const modalTimeoutRef = useRef(null);
@@ -127,7 +131,7 @@ export default function AddTenantsScreen({ onNavigate }) {
     (async () => {
       try {
         const response = await fetch(
-         `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phoneUser)}&uId=${loginData?.Id}`,
+          `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phoneUser)}&uId=${loginData?.Id}`,
           { headers: { TenantId: TENANT_ID } }
         );
         const data = await response.json().catch(() => null);
@@ -180,13 +184,24 @@ export default function AddTenantsScreen({ onNavigate }) {
     setPropDetailsId(match ? match.Id : null);
   }, [selectedFloor, selectedFlat, propertyDetailsList]);
 
+  // Every flat is shown with its status. Only Vacant flats can be picked;
+  // Running ones appear greyed out with a "Running" badge.
+  // (Floors come pre-sorted from SP_Property QC4.)
+  const isRunning = (d) => d?.AvailabilityStatus === 'Running';
+  const vacantDetails = propertyDetailsList.filter((d) => !isRunning(d));
   const uniqueFloors = [...new Set(propertyDetailsList.map((d) => d.Floor))];
-  const flatsForSelectedFloor = propertyDetailsList
-    .filter((d) => d.Floor === selectedFloor)
-    .map((d) => d.FlatName);
+  const detailsForSelectedFloor = propertyDetailsList.filter((d) => d.Floor === selectedFloor);
+  const flatsForSelectedFloor = detailsForSelectedFloor.map((d) => d.FlatName);
+  const flatStatus = (flatName) =>
+    isRunning(detailsForSelectedFloor.find((d) => d.FlatName === flatName)) ? 'Running' : 'Vacant';
+  const vacantCountOnFloor = (floorName) =>
+    vacantDetails.filter((d) => d.Floor === floorName).length;
+  const noVacantFlats =
+    !!selectedProperty && !loadingPropertyDetails &&
+    propertyDetailsList.length > 0 && vacantDetails.length === 0;
 
   const dropdownConfig = {
-      property: {
+    property: {
       label: t('addDetails.property'),
       hint: t('addTenant.propertyHint'),
       options: properties.map((p) => p.Name),
@@ -201,6 +216,8 @@ export default function AddTenantsScreen({ onNavigate }) {
       hint: t('addTenant.floorHint'),
       options: uniqueFloors,
       value: selectedFloor,
+      // e.g. "2 vacant" under each floor; floors with none are still visible
+      metaFor: (floorName) => `${vacantCountOnFloor(floorName)} ${t('flatStatus.vacantCount')}`,
       onSelect: (value) => {
         setSelectedFloor(value);
         setSelectedFlat('');
@@ -211,9 +228,11 @@ export default function AddTenantsScreen({ onNavigate }) {
       hint: t('addTenant.flatHint'),
       options: flatsForSelectedFloor,
       value: selectedFlat,
+      statusFor: flatStatus,
+      isDisabled: (flatName) => flatStatus(flatName) === 'Running',
       onSelect: setSelectedFlat,
     },
-       tenantType: {
+    tenantType: {
       label: t('addTenant.type'),
       hint: t('addTenant.typeHint'),
       options: TENANT_TYPE_OPTIONS.map((o) => o.value),
@@ -233,7 +252,7 @@ export default function AddTenantsScreen({ onNavigate }) {
     },
   }[activeDropdown];
 
-   const optionLabel = (option) =>
+  const optionLabel = (option) =>
     dropdownConfig?.labelFor ? dropdownConfig.labelFor(option) : option;
 
   const filteredOptions = dropdownConfig
@@ -241,34 +260,36 @@ export default function AddTenantsScreen({ onNavigate }) {
         optionLabel(option).toLowerCase().includes(search.toLowerCase())
       )
     : [];
+
   const filled = [selectedProperty, selectedFloor, selectedFlat, tenantName.trim(), phone.trim()]
     .filter(Boolean).length;
-const filteredCountries = useMemo(() => {
-  const query = countrySearch.trim().toLowerCase();
-  if (!query) return COUNTRY_LIST;
-  return COUNTRY_LIST.filter(
-    (c) =>
-      c.name.toLowerCase().includes(query) ||
-      c.dialCode.includes(query) ||
-      c.code.toLowerCase().includes(query)
-  );
-}, [countrySearch]);
 
-function openCountryPicker() {
-  Keyboard.dismiss();
-  setCountrySearch('');
-  setCountryPickerOpen(true);
-}
+  const filteredCountries = useMemo(() => {
+    const query = countrySearch.trim().toLowerCase();
+    if (!query) return COUNTRY_LIST;
+    return COUNTRY_LIST.filter(
+      (c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.dialCode.includes(query) ||
+        c.code.toLowerCase().includes(query)
+    );
+  }, [countrySearch]);
 
-function handleSelectCountry(item) {
-  setCountry(item);
-  setCountryPickerOpen(false);
-}
+  function openCountryPicker() {
+    Keyboard.dismiss();
+    setCountrySearch('');
+    setCountryPickerOpen(true);
+  }
+
+  function handleSelectCountry(item) {
+    setCountry(item);
+    setCountryPickerOpen(false);
+  }
+
   /**
-   * Scrolls the focused input so its whole box sits inside whatever the
-   * ScrollView's CURRENT visible height is. viewportRef.current is always
-   * up to date because onLayout re-fires whenever the container is
-   * resized by the keyboard (Android resize mode / iOS KeyboardAvoidingView).
+   * Scrolls the focused input so its whole box sits inside the ScrollView's
+   * CURRENT visible height. viewportRef.current stays up to date because
+   * onLayout re-fires whenever the keyboard resizes the container.
    */
   function revealInput(ref) {
     const scrollNode = findNodeHandle(scrollRef.current);
@@ -297,9 +318,8 @@ function handleSelectCountry(item) {
     const ref = fieldRef(key);
     return {
       ref,
-      // Wait for the keyboard-open animation + the resulting layout resize
-      // to actually finish before measuring, otherwise we measure against
-      // the OLD (taller) viewport and scroll to the wrong place.
+      // Wait for the keyboard animation + layout resize to finish before
+      // measuring, otherwise we measure against the old (taller) viewport.
       onFocus: () => {
         setTimeout(() => revealInput(ref), 250);
       },
@@ -318,32 +338,27 @@ function handleSelectCountry(item) {
     setActiveDropdown(null);
   }
 
-  const [activeDateField, setActiveDateField] = useState(null);
   const activeDateValue =
     (activeDateField === 'dob' && dob) ||
     (activeDateField === 'startDate' && startDate) ||
     (activeDateField === 'endDate' && endDate) ||
     new Date();
 
-  // Shared by both platforms — the one place that actually decides which
-  // state field a picked date goes into.
+  // Shared by both platforms — decides which state field a picked date goes into.
   function applyDate(field, date) {
     if (field === 'dob') setDob(date);
     if (field === 'startDate') setStartDate(date);
     if (field === 'endDate') setEndDate(date);
   }
 
-  // iOS keeps the inline component (still the correct, non-deprecated
-  // approach there) — this only ever fires from that component's onChange.
+  // iOS inline picker's onChange.
   function handleDateChange(event, selectedDate) {
     const field = activeDateField;
     if (event.type === 'dismissed' || !selectedDate) return;
     applyDate(field, selectedDate);
   }
 
-  // Android's picker is a native dialog, not a persistent view — the newer
-  // library versions deprecate driving it via the default component's
-  // onChange prop and want it opened imperatively instead.
+  // Android opens the native dialog imperatively; iOS mounts the inline picker.
   function openDatePicker(field, currentValue) {
     Keyboard.dismiss();
 
@@ -361,7 +376,6 @@ function handleSelectCountry(item) {
       return;
     }
 
-    // iOS — set the field so the inline <DateTimePicker> below mounts.
     setActiveDateField(field);
   }
 
@@ -370,6 +384,28 @@ function handleSelectCountry(item) {
     if (result.canceled) return;
     const asset = result.assets?.[0];
     if (asset) setter(asset.name);
+  }
+
+  function resetForm() {
+    setSelectedProperty(null); // also clears floor/flat/propDetailsId via effect
+    setTenantName('');         // FIX: was missing before
+    setNid('');
+    setPhone('');
+    setCountry(DEFAULT_COUNTRY);
+    setEmail('');
+    setDob(null);
+    setTenantType('');
+    setReligion('');
+    setStartDate(null);
+    setEndDate(null);
+    setAdvancePayment('');
+    setMonthlyAmount('');
+    setPoliceForm(null);
+    setAgreementForm(null);
+    setContactName('');
+    setContactPhone('');
+    setContactRelation('');
+    setContactAddress('');
   }
 
   async function handleSave() {
@@ -402,10 +438,10 @@ function handleSelectCountry(item) {
           Phone: loginData?.Phone || loginData?.phone || '',
           PropertyId: selectedProperty.Id,
           PropDetailsId: propDetailsId,
-          TenantName: tenantName,
+          TenantName: tenantName.trim(),
           NID: nid,
           TenantPhone: buildFullPhone(country.dialCode, phone),
-          TenantEmail: email,
+          TenantEmail: email.trim(),
           DOB: dob,
           TenantType: tenantType,
           Religion: religion,
@@ -426,33 +462,20 @@ function handleSelectCountry(item) {
       const data = await response.json().catch(() => null);
 
       if (!response.ok || (data && data.success === false)) {
-       throw new Error((data && data.message) || t('addTenant.saveFailed'));
+        throw new Error((data && data.message) || t('addTenant.saveFailed'));
       }
-      const savedTenantName = tenantName;
+
+      const savedTenantName = tenantName.trim();
       const savedPropertyName = selectedProperty.Name;
       const savedFlat = selectedFlat;
       const savedFloor = selectedFloor;
-      setSelectedProperty(null);
-      setNid('');
-      setPhone('');
-      setEmail('');
-      setDob(null);
-      setTenantType('');
-      setReligion('');
-      setStartDate(null);
-      setEndDate(null);
-      setAdvancePayment('');
-      setMonthlyAmount('');
-      setPoliceForm(null);
-      setAgreementForm(null);
-      setContactName('');
-      setContactPhone('');
-      setContactRelation('');
-      setContactAddress('');
+
+      resetForm();
+
       setModal({
         type: 'success',
         title: t('addTenant.savedTitle'),
-        message: `${savedTenantName} has been added to ${savedPropertyName}, ${savedFlat} (${savedFloor}).`,
+        message: `${savedTenantName} — ${savedPropertyName}, ${savedFlat} (${savedFloor})`,
       });
       modalTimeoutRef.current = setTimeout(() => {
         setModal(null);
@@ -473,8 +496,6 @@ function handleSelectCountry(item) {
     <KeyboardAvoidingView
       style={styles.page}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      // Android handles the resize natively via app.json's
-      // softwareKeyboardLayoutMode: "resize" — no offset needed there.
     >
       <ScrollView
         ref={scrollRef}
@@ -539,6 +560,13 @@ function handleSelectCountry(item) {
             )}
           </TouchableOpacity>
 
+          {noVacantFlats ? (
+            <View style={styles.noVacantBanner}>
+              <Ionicons name="information-circle-outline" size={16} color={colors.muted} />
+              <Text style={styles.noVacantText}>{t('addTenant.noVacantFlats')}</Text>
+            </View>
+          ) : null}
+
           {selectedProperty ? (
             <View style={styles.row}>
               <View style={styles.rowItem}>
@@ -555,7 +583,9 @@ function handleSelectCountry(item) {
                     style={selectedFloor ? styles.dropdownValue : styles.dropdownPlaceholder}
                     numberOfLines={1}
                   >
-                  {loadingPropertyDetails ? t('form.loading') : selectedFloor || t('addDetails.selectFloor')}
+                    {loadingPropertyDetails
+                      ? t('form.loading')
+                      : selectedFloor || t('addDetails.selectFloor')}
                   </Text>
                   {loadingPropertyDetails ? (
                     <ActivityIndicator size="small" color={colors.muted} />
@@ -576,7 +606,8 @@ function handleSelectCountry(item) {
                     style={selectedFlat ? styles.dropdownValue : styles.dropdownPlaceholder}
                     numberOfLines={1}
                   >
-                 {selectedFlat || (selectedFloor ? t('addTenant.selectFlat') : t('addTenant.floorFirst'))}
+                    {selectedFlat ||
+                      (selectedFloor ? t('addTenant.selectFlat') : t('addTenant.floorFirst'))}
                   </Text>
                   <Ionicons name="chevron-down" size={18} color={colors.muted} />
                 </TouchableOpacity>
@@ -590,49 +621,50 @@ function handleSelectCountry(item) {
           <TextInput
             {...focusProps('tenantName')}
             style={styles.input}
-           placeholder={t('addTenant.namePlaceholder')}
+            placeholder={t('addTenant.namePlaceholder')}
             placeholderTextColor={colors.muted}
             value={tenantName}
-            onChangeText={(t) => {
-              setTenantName(t);
+            onChangeText={(text) => {
+              setTenantName(text);
               if (error) setError('');
             }}
           />
 
-     <Text style={styles.label}>{t('addTenant.nid')}</Text>
-<TextInput
-  {...focusProps('nid')}
-  style={styles.input}
-  placeholder={t('addTenant.nidPlaceholder')}
-  placeholderTextColor={colors.muted}
-  value={nid}
-  onChangeText={setNid}
-  keyboardType="number-pad"
-/>
+          <Text style={styles.label}>{t('addTenant.nid')}</Text>
+          <TextInput
+            {...focusProps('nid')}
+            style={styles.input}
+            placeholder={t('addTenant.nidPlaceholder')}
+            placeholderTextColor={colors.muted}
+            value={nid}
+            onChangeText={setNid}
+            keyboardType="number-pad"
+          />
 
-<Text style={styles.label}>{t('common.phone')}</Text>
-<View style={styles.phoneFieldRow}>
-  <TouchableOpacity
-    style={styles.countryButtonSmall}
-    onPress={openCountryPicker}
-    activeOpacity={0.7}
-  >
-    <Text style={styles.countryFlagSmall}>{country.flag}</Text>
-    <Text style={styles.countryDialCodeSmall}>{country.dialCode}</Text>
-  </TouchableOpacity>
-  <TextInput
-    {...focusProps('phone')}
-    style={[styles.input, styles.phoneInputSmall]}
-    placeholder={t('addTenant.phonePlaceholder')}
-    placeholderTextColor={colors.muted}
-    value={phone}
-    onChangeText={(t) => {
-      setPhone(t);
-      if (error) setError('');
-    }}
-    keyboardType="phone-pad"
-  />
-</View>
+          <Text style={styles.label}>{t('common.phone')}</Text>
+          <View style={styles.phoneFieldRow}>
+            <TouchableOpacity
+              style={styles.countryButtonSmall}
+              onPress={openCountryPicker}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.countryFlagSmall}>{country.flag}</Text>
+              <Text style={styles.countryDialCodeSmall}>{country.dialCode}</Text>
+            </TouchableOpacity>
+            <TextInput
+              {...focusProps('phone')}
+              style={[styles.input, styles.phoneInputSmall]}
+              placeholder={t('addTenant.phonePlaceholder')}
+              placeholderTextColor={colors.muted}
+              value={phone}
+              onChangeText={(text) => {
+                setPhone(text);
+                if (error) setError('');
+              }}
+              keyboardType="phone-pad"
+            />
+          </View>
+
           <Text style={styles.label}>
             {t('common.email')} <Text style={styles.labelSoft}>{t('form.optional')}</Text>
           </Text>
@@ -654,14 +686,14 @@ function handleSelectCountry(item) {
             activeOpacity={0.7}
           >
             <Text style={dob ? styles.dropdownValue : styles.dropdownPlaceholder}>
-               {dob ? formatDate(dob) : t('form.selectDate')}
+              {dob ? formatDate(dob) : t('form.selectDate')}
             </Text>
             <Ionicons name="calendar-outline" size={18} color={colors.muted} />
           </TouchableOpacity>
 
           <View style={styles.row}>
             <View style={styles.rowItem}>
-                <Text style={styles.label}>{t('addTenant.type')}</Text>
+              <Text style={styles.label}>{t('addTenant.type')}</Text>
               <TouchableOpacity
                 style={styles.dropdownButton}
                 onPress={() => openDropdown('tenantType')}
@@ -679,7 +711,7 @@ function handleSelectCountry(item) {
               </TouchableOpacity>
             </View>
             <View style={styles.rowItem}>
-             <Text style={styles.label}>{t('addTenant.religion')}</Text>
+              <Text style={styles.label}>{t('addTenant.religion')}</Text>
               <TouchableOpacity
                 style={styles.dropdownButton}
                 onPress={() => openDropdown('religion')}
@@ -689,7 +721,7 @@ function handleSelectCountry(item) {
                   style={religion ? styles.dropdownValue : styles.dropdownPlaceholder}
                   numberOfLines={1}
                 >
-                   {religion
+                  {religion
                     ? t(RELIGION_OPTIONS.find((o) => o.value === religion)?.labelKey || religion)
                     : t('addTenant.selectReligion')}
                 </Text>
@@ -699,10 +731,10 @@ function handleSelectCountry(item) {
           </View>
 
           <View style={styles.divider} />
-            <Text style={styles.groupHeading}>{t('addTenant.groupTenancy')}</Text>
+          <Text style={styles.groupHeading}>{t('addTenant.groupTenancy')}</Text>
           <View style={styles.row}>
             <View style={styles.rowItem}>
-             <Text style={styles.label}>{t('addTenant.startDate')}</Text>
+              <Text style={styles.label}>{t('addTenant.startDate')}</Text>
               <TouchableOpacity
                 style={styles.dropdownButton}
                 onPress={() => openDatePicker('startDate', startDate)}
@@ -712,7 +744,7 @@ function handleSelectCountry(item) {
                   style={startDate ? styles.dropdownValue : styles.dropdownPlaceholder}
                   numberOfLines={1}
                 >
-                   {startDate ? formatDate(startDate) : t('form.selectDate')}
+                  {startDate ? formatDate(startDate) : t('form.selectDate')}
                 </Text>
                 <Ionicons name="calendar-outline" size={18} color={colors.muted} />
               </TouchableOpacity>
@@ -728,7 +760,7 @@ function handleSelectCountry(item) {
                   style={endDate ? styles.dropdownValue : styles.dropdownPlaceholder}
                   numberOfLines={1}
                 >
-                 {endDate ? formatDate(endDate) : t('form.selectDate')}
+                  {endDate ? formatDate(endDate) : t('form.selectDate')}
                 </Text>
                 <Ionicons name="calendar-outline" size={18} color={colors.muted} />
               </TouchableOpacity>
@@ -749,7 +781,7 @@ function handleSelectCountry(item) {
               />
             </View>
             <View style={styles.rowItem}>
-               <Text style={styles.label}>{t('addTenant.monthly')}</Text>
+              <Text style={styles.label}>{t('addTenant.monthly')}</Text>
               <TextInput
                 {...focusProps('monthly')}
                 style={styles.input}
@@ -764,10 +796,11 @@ function handleSelectCountry(item) {
 
           <View style={styles.divider} />
           <Text style={styles.groupHeading}>
-            {t('addTenant.groupDocuments')} <Text style={styles.groupHeadingSoft}>{t('form.optional')}</Text>
+            {t('addTenant.groupDocuments')}{' '}
+            <Text style={styles.groupHeadingSoft}>{t('form.optional')}</Text>
           </Text>
 
-           <Text style={styles.label}>{t('addTenant.policeForm')}</Text>
+          <Text style={styles.label}>{t('addTenant.policeForm')}</Text>
           <TouchableOpacity
             style={styles.fileButton}
             onPress={() => pickFile(setPoliceForm)}
@@ -784,7 +817,7 @@ function handleSelectCountry(item) {
             </Text>
           </TouchableOpacity>
 
-           <Text style={styles.label}>{t('addTenant.agreementForm')}</Text>
+          <Text style={styles.label}>{t('addTenant.agreementForm')}</Text>
           <TouchableOpacity
             style={styles.fileButton}
             onPress={() => pickFile(setAgreementForm)}
@@ -807,7 +840,7 @@ function handleSelectCountry(item) {
           <TextInput
             {...focusProps('contactName')}
             style={styles.input}
-           placeholder={t('addTenant.contactNamePlaceholder')}
+            placeholder={t('addTenant.contactNamePlaceholder')}
             placeholderTextColor={colors.muted}
             value={contactName}
             onChangeText={setContactName}
@@ -815,7 +848,7 @@ function handleSelectCountry(item) {
 
           <View style={styles.row}>
             <View style={styles.rowItem}>
-               <Text style={styles.label}>{t('common.phone')}</Text>
+              <Text style={styles.label}>{t('common.phone')}</Text>
               <TextInput
                 {...focusProps('contactPhone')}
                 style={styles.input}
@@ -827,7 +860,7 @@ function handleSelectCountry(item) {
               />
             </View>
             <View style={styles.rowItem}>
-             <Text style={styles.label}>{t('addTenant.relation')}</Text>
+              <Text style={styles.label}>{t('addTenant.relation')}</Text>
               <TextInput
                 {...focusProps('contactRelation')}
                 style={styles.input}
@@ -839,11 +872,11 @@ function handleSelectCountry(item) {
             </View>
           </View>
 
-           <Text style={styles.label}>{t('common.address')}</Text>
+          <Text style={styles.label}>{t('common.address')}</Text>
           <TextInput
             {...focusProps('contactAddress')}
             style={[styles.input, styles.textArea]}
-           placeholder={t('addTenant.contactAddressPlaceholder')}
+            placeholder={t('addTenant.contactAddressPlaceholder')}
             placeholderTextColor={colors.muted}
             value={contactAddress}
             onChangeText={setContactAddress}
@@ -857,9 +890,8 @@ function handleSelectCountry(item) {
         </Text>
       </ScrollView>
 
-      {/* No longer position:absolute. As a normal flex sibling of the
-          ScrollView, this naturally sits right above the keyboard because
-          the ScrollView above it shrinks to fill the remaining space. */}
+      {/* Normal flex sibling of the ScrollView — sits right above the keyboard
+          because the ScrollView shrinks to fill the remaining space. */}
       <View style={styles.actionBar}>
         <TouchableOpacity
           style={[styles.submitButton, saving && styles.submitButtonDisabled]}
@@ -870,7 +902,7 @@ function handleSelectCountry(item) {
           {saving ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-         <Text style={styles.submitLabel}>{t('addTenant.save')}</Text>
+            <Text style={styles.submitLabel}>{t('addTenant.save')}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -922,25 +954,60 @@ function handleSelectCountry(item) {
                     ) : (
                       filteredOptions.map((option) => {
                         const active = dropdownConfig.value === option;
+                        const disabled = dropdownConfig.isDisabled?.(option) ?? false;
+                        const status = dropdownConfig.statusFor?.(option);
+                        const meta = dropdownConfig.metaFor?.(option);
                         return (
                           <TouchableOpacity
                             key={option}
-                            style={[styles.optionRow, active && styles.optionRowActive]}
+                            style={[
+                              styles.optionRow,
+                              active && styles.optionRowActive,
+                              disabled && styles.optionRowDisabled,
+                            ]}
                             onPress={() => {
+                              if (disabled) return;
                               dropdownConfig.onSelect(option);
                               closeDropdown();
                             }}
+                            disabled={disabled}
                             activeOpacity={0.8}
                           >
-                            <View style={styles.optionBadge}>
-                           <Text style={styles.optionBadgeText}>{initials(optionLabel(option))}</Text>
+                            <View style={[styles.optionBadge, disabled && styles.optionBadgeDisabled]}>
+                              <Text style={[styles.optionBadgeText, disabled && styles.optionBadgeTextDisabled]}>
+                                {initials(optionLabel(option))}
+                              </Text>
                             </View>
-                                                       <Text
-                              style={[styles.optionLabel, active && styles.optionLabelActive]}
-                              numberOfLines={1}
-                            >
-                              {optionLabel(option)}
-                            </Text>
+                            <View style={styles.optionTextWrap}>
+                              <Text
+                                style={[
+                                  styles.optionLabel,
+                                  active && styles.optionLabelActive,
+                                  disabled && styles.optionLabelDisabled,
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {optionLabel(option)}
+                              </Text>
+                              {meta ? <Text style={styles.optionMeta}>{meta}</Text> : null}
+                            </View>
+                            {status ? (
+                              <View
+                                style={[
+                                  styles.statusPill,
+                                  status === 'Running' ? styles.statusPillRunning : styles.statusPillVacant,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.statusPillText,
+                                    status === 'Running' ? styles.statusTextRunning : styles.statusTextVacant,
+                                  ]}
+                                >
+                                  {status === 'Running' ? t('flatStatus.running') : t('flatStatus.vacant')}
+                                </Text>
+                              </View>
+                            ) : null}
                             {active ? (
                               <Ionicons name="checkmark" size={18} color={colors.primary} />
                             ) : null}
@@ -981,68 +1048,70 @@ function handleSelectCountry(item) {
         }}
         onRequestClose={() => setModal(null)}
       />
-      {/* Country picker modal — separate from the generic property/floor/
-    flat/tenantType/religion dropdown system above, since this one needs
-    to store a whole {code, name, dialCode, flag} object rather than a
-    plain string value. */}
-<Modal
-  visible={countryPickerOpen}
-  transparent
-  animationType="fade"
-  onRequestClose={() => setCountryPickerOpen(false)}
->
-  <Pressable style={styles.overlay} onPress={() => setCountryPickerOpen(false)}>
-    <Pressable style={styles.sheet} onPress={() => {}}>
-      <View style={styles.sheetGrabber} />
-      <Text style={styles.sheetTitle}>Select Country</Text>
 
-      <View style={styles.searchWrap}>
-        <Ionicons name="search" size={16} color={colors.muted} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search country or code"
-          placeholderTextColor={colors.muted}
-          value={countrySearch}
-          onChangeText={setCountrySearch}
-          autoFocus
-        />
-        {countrySearch.length > 0 && (
-          <TouchableOpacity onPress={() => setCountrySearch('')} hitSlop={8}>
-            <Ionicons name="close-circle" size={16} color={colors.muted} />
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* Country picker — separate from the generic dropdown above because it
+          stores a whole {code, name, dialCode, flag} object, not a string. */}
+      <Modal
+        visible={countryPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCountryPickerOpen(false)}
+      >
+        <Pressable style={styles.overlay} onPress={() => setCountryPickerOpen(false)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <View style={styles.sheetGrabber} />
+            <Text style={styles.sheetTitle}>Select Country</Text>
 
-      <FlatList
-        data={filteredCountries}
-        keyExtractor={(item) => item.code}
-        keyboardShouldPersistTaps="handled"
-        style={styles.optionsScroll}
-        contentContainerStyle={styles.optionsScrollContent}
-        initialNumToRender={20}
-        windowSize={10}
-        ListEmptyComponent={<Text style={styles.emptyText}>{t('form.noMatches')}</Text>}
-        renderItem={({ item }) => {
-          const active = country.code === item.code;
-          return (
-            <TouchableOpacity
-              style={[styles.optionRow, active && styles.optionRowActive]}
-              onPress={() => handleSelectCountry(item)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.countryFlagOption}>{item.flag}</Text>
-              <Text style={[styles.optionLabel, active && styles.optionLabelActive]} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <Text style={styles.countryDialCodeOption}>{item.dialCode}</Text>
-              {active ? <Ionicons name="checkmark" size={18} color={colors.primary} /> : null}
-            </TouchableOpacity>
-          );
-        }}
-      />
-    </Pressable>
-  </Pressable>
-</Modal>
+            <View style={styles.searchWrap}>
+              <Ionicons name="search" size={16} color={colors.muted} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search country or code"
+                placeholderTextColor={colors.muted}
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+                autoFocus
+              />
+              {countrySearch.length > 0 && (
+                <TouchableOpacity onPress={() => setCountrySearch('')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={16} color={colors.muted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <FlatList
+              data={filteredCountries}
+              keyExtractor={(item) => item.code}
+              keyboardShouldPersistTaps="handled"
+              style={styles.optionsScroll}
+              contentContainerStyle={styles.optionsScrollContent}
+              initialNumToRender={20}
+              windowSize={10}
+              ListEmptyComponent={<Text style={styles.emptyText}>{t('form.noMatches')}</Text>}
+              renderItem={({ item }) => {
+                const active = country.code === item.code;
+                return (
+                  <TouchableOpacity
+                    style={[styles.optionRow, active && styles.optionRowActive]}
+                    onPress={() => handleSelectCountry(item)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.countryFlagOption}>{item.flag}</Text>
+                    <Text
+                      style={[styles.optionLabel, active && styles.optionLabelActive]}
+                      numberOfLines={1}
+                    >
+                      {item.name}
+                    </Text>
+                    <Text style={styles.countryDialCodeOption}>{item.dialCode}</Text>
+                    {active ? <Ionicons name="checkmark" size={18} color={colors.primary} /> : null}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1135,6 +1204,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Manrope-SemiBold',
     color: '#912018',
+  },
+  noVacantBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fafbfc',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  noVacantText: {
+    flex: 1,
+    fontSize: 12.5,
+    fontFamily: 'Manrope-SemiBold',
+    color: colors.muted,
   },
   card: {
     backgroundColor: colors.surface,
@@ -1387,42 +1474,85 @@ const styles = StyleSheet.create({
   optionLabelActive: {
     color: colors.primary,
   },
+  optionTextWrap: {
+    flex: 1,
+  },
+  optionMeta: {
+    fontSize: 11.5,
+    fontFamily: 'Manrope-Medium',
+    color: colors.muted,
+    marginTop: 2,
+  },
+  optionRowDisabled: {
+    backgroundColor: '#f4f5f7',
+    borderStyle: 'dashed',
+  },
+  optionBadgeDisabled: {
+    backgroundColor: colors.border,
+  },
+  optionBadgeTextDisabled: {
+    color: colors.muted,
+  },
+  optionLabelDisabled: {
+    color: colors.muted,
+  },
+  statusPill: {
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  statusPillVacant: {
+    backgroundColor: '#ecfdf3',
+  },
+  statusPillRunning: {
+    backgroundColor: '#fef3f2',
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontFamily: 'Manrope-Bold',
+  },
+  statusTextVacant: {
+    color: '#067647',
+  },
+  statusTextRunning: {
+    color: '#b42318',
+  },
   phoneFieldRow: {
-  flexDirection: 'row',
-  gap: 6,
-  marginBottom: 16,
-},
-countryButtonSmall: {
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 5,
-  borderWidth: 1.5,
-  borderColor: colors.border,
-  borderRadius: 12,
-  backgroundColor: '#fafbfc',
-  paddingHorizontal: 14,
-  minWidth: 88,
-  justifyContent: 'center',
-},
-countryFlagSmall: {
-  fontSize: 15,
-},
-countryDialCodeSmall: {
-  fontSize: 14,
-  color: colors.text,
-  fontFamily: 'Manrope-SemiBold',
-},
-phoneInputSmall: {
-  flex: 1,
-  marginBottom: 0,
-},
-countryFlagOption: {
-  fontSize: 18,
-},
-countryDialCodeOption: {
-  fontSize: 12.5,
-  color: colors.muted,
-  fontFamily: 'Manrope-SemiBold',
-  marginRight: 2,
-},
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 16,
+  },
+  countryButtonSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: '#fafbfc',
+    paddingHorizontal: 14,
+    minWidth: 88,
+    justifyContent: 'center',
+  },
+  countryFlagSmall: {
+    fontSize: 15,
+  },
+  countryDialCodeSmall: {
+    fontSize: 14,
+    color: colors.text,
+    fontFamily: 'Manrope-SemiBold',
+  },
+  phoneInputSmall: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  countryFlagOption: {
+    fontSize: 18,
+  },
+  countryDialCodeOption: {
+    fontSize: 12.5,
+    color: colors.muted,
+    fontFamily: 'Manrope-SemiBold',
+    marginRight: 2,
+  },
 });

@@ -37,6 +37,12 @@ const FLOOR_OPTIONS = [
 
 const TENANT_ID = 'PropHub';
 
+function initials(value) {
+  if (!value) return '—';
+  const parts = String(value).trim().split(/\s+/);
+  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || parts[0]?.[1] || '')).toUpperCase();
+}
+
 export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate }) {
   const { loginData } = useContext(AuthContext);
   const { t } = useLanguage();
@@ -69,7 +75,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
     (async () => {
       try {
         const response = await fetch(
-         `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phone)}&uId=${loginData?.Id}`,
+          `${config.BMS_API}api/GetMyPropertyList?phone=${encodeURIComponent(phone)}&uId=${loginData?.Id}`,
           { headers: { TenantId: TENANT_ID } }
         );
         const data = await response.json().catch(() => null);
@@ -108,6 +114,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
       onSelect: setFloor,
     },
   }[activeDropdown];
+
   const filteredOptions = dropdownConfig
     ? dropdownConfig.options.filter((option) =>
         option.toLowerCase().includes(search.toLowerCase())
@@ -132,7 +139,8 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
 
   async function handleSave() {
     if (!selectedProperty || !flatName.trim() || !floor || !meterNo.trim()) {
-      setError('Please fill in Property, Flat Name, Floor, and Meter No.');
+      // FIX: translated message instead of hardcoded English
+      setError(t('addDetails.validation'));
       Keyboard.dismiss();
       scrollRef.current?.scrollTo({ y: 0, animated: true });
       setModal({
@@ -144,11 +152,16 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
       return;
     }
 
-    setError(t('addDetails.validation'));
+    // FIX: clear the banner once validation passes (it was being SET here before)
+    setError('');
     Keyboard.dismiss();
     setSaving(true);
 
+    const cleanFlatName = flatName.trim();
+    const cleanMeterNo = meterNo.trim();
+
     try {
+      // AvailabilityStatus is NOT sent — SP_Property QC3 always stores 'Vacant'.
       const response = await fetch(`${config.BMS_API}api/AddPropertyDetails`, {
         method: 'POST',
         headers: {
@@ -159,12 +172,12 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
           UId: loginData?.Id,
           Phone: selectedProperty.Phone,
           PropertyId: selectedProperty.Id,
-          FlatName: flatName,
+          FlatName: cleanFlatName,
           Floor: floor,
           Room: rooms,
           Bathroom: bathrooms,
           Balcony: balconies,
-          MeterNo: meterNo,
+          MeterNo: cleanMeterNo,
           EntryBy: loginData?.Name || loginData?.Phone || '',
         }),
       });
@@ -172,18 +185,18 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
       const data = await response.json().catch(() => null);
 
       if (!response.ok || (data && data.success === false)) {
-      throw new Error((data && data.message) || t('addDetails.saveFailed'));
+        throw new Error((data && data.message) || t('addDetails.saveFailed'));
       }
 
-     setModal({
+      setModal({
         type: 'success',
         title: t('addDetails.savedTitle'),
-        message: `${selectedProperty.Name} — ${flatName} (${floor})\n${t('addDetails.rooms')}: ${rooms} · ${t('addDetails.bathrooms')}: ${bathrooms} · ${t('addDetails.balconies')}: ${balconies}\n${t('addDetails.meterNo')}: ${meterNo}`,
+        message: `${selectedProperty.Name} — ${cleanFlatName} (${floor})\n${t('addDetails.rooms')}: ${rooms} · ${t('addDetails.bathrooms')}: ${bathrooms} · ${t('addDetails.balconies')}: ${balconies}\n${t('addDetails.meterNo')}: ${cleanMeterNo}`,
         actionLabel: t('form.done'),
         onAction: () => onNavigate?.('manage-building'),
       });
     } catch (err) {
-        setModal({
+      setModal({
         type: 'error',
         title: t('form.couldNotSave'),
         message: err.message || t('addDetails.saveFailed'),
@@ -191,12 +204,6 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
     } finally {
       setSaving(false);
     }
-  }
-
-  function initials(value) {
-    if (!value) return '—';
-    const parts = String(value).trim().split(/\s+/);
-    return ((parts[0]?.[0] || '') + (parts[1]?.[0] || parts[0]?.[1] || '')).toUpperCase();
   }
 
   return (
@@ -225,7 +232,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${(filled / 4) * 100}%` }]} />
           </View>
-                   <Text style={styles.progressLabel}>{filled} {t('form.of')} 4</Text>
+          <Text style={styles.progressLabel}>{filled} {t('form.of')} 4</Text>
         </View>
 
         {error ? (
@@ -240,10 +247,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
 
           <Text style={styles.label}>{t('addDetails.property')}</Text>
           <TouchableOpacity
-            style={[
-              styles.dropdownButton,
-              isPropertyLocked && styles.dropdownButtonLocked,
-            ]}
+            style={[styles.dropdownButton, isPropertyLocked && styles.dropdownButtonLocked]}
             onPress={() => !loadingProperties && openDropdown('property')}
             activeOpacity={isPropertyLocked ? 1 : 0.7}
             disabled={isPropertyLocked}
@@ -270,7 +274,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
             )}
           </TouchableOpacity>
           {isPropertyLocked ? (
-          <Text style={styles.lockedHint}>{t('addDetails.lockedHint')}</Text>
+            <Text style={styles.lockedHint}>{t('addDetails.lockedHint')}</Text>
           ) : null}
 
           <View style={styles.row}>
@@ -281,8 +285,8 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
                 placeholder="e.g. Flat A"
                 placeholderTextColor={colors.muted}
                 value={flatName}
-                onChangeText={(t) => {
-                  setFlatName(t);
+                onChangeText={(text) => {
+                  setFlatName(text);
                   if (error) setError('');
                 }}
                 returnKeyType="next"
@@ -300,7 +304,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
                   style={floor ? styles.dropdownValue : styles.dropdownPlaceholder}
                   numberOfLines={1}
                 >
-                {floor || t('addDetails.selectFloor')}
+                  {floor || t('addDetails.selectFloor')}
                 </Text>
                 <Ionicons name="chevron-down" size={18} color={colors.muted} />
               </TouchableOpacity>
@@ -308,11 +312,12 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
           </View>
 
           <View style={styles.divider} />
-           <Text style={styles.groupHeading}>
-            {t('addDetails.groupLayout')} <Text style={styles.groupHeadingSoft}>{t('form.optional')}</Text>
+          <Text style={styles.groupHeading}>
+            {t('addDetails.groupLayout')}{' '}
+            <Text style={styles.groupHeadingSoft}>{t('form.optional')}</Text>
           </Text>
 
-                  <View style={styles.stepperGroup}>
+          <View style={styles.stepperGroup}>
             <Stepper
               label={t('addDetails.room')}
               value={rooms}
@@ -334,7 +339,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
           </View>
 
           <View style={styles.divider} />
-           <Text style={styles.groupHeading}>{t('addDetails.groupUtility')}</Text>
+          <Text style={styles.groupHeading}>{t('addDetails.groupUtility')}</Text>
 
           <Text style={styles.label}>{t('addDetails.meterNo')}</Text>
           <TextInput
@@ -342,8 +347,8 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
             placeholder="Enter meter number"
             placeholderTextColor={colors.muted}
             value={meterNo}
-            onChangeText={(t) => {
-              setMeterNo(t);
+            onChangeText={(text) => {
+              setMeterNo(text);
               if (error) setError('');
             }}
             returnKeyType="done"
@@ -351,7 +356,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
           />
         </View>
 
-      <Text style={styles.footnote}>{t('addDetails.footnote')}</Text>
+        <Text style={styles.footnote}>{t('addDetails.footnote')}</Text>
       </ScrollView>
 
       <View style={styles.actionBar}>
@@ -364,7 +369,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
           {saving ? (
             <ActivityIndicator color="#ffffff" />
           ) : (
-          <Text style={styles.submitLabel}>{t('addDetails.save')}</Text>
+            <Text style={styles.submitLabel}>{t('addDetails.save')}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -408,7 +413,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
                   showsVerticalScrollIndicator
                 >
                   {filteredOptions.length === 0 ? (
-                <Text style={styles.emptyText}>{t('form.noMatches')}</Text>
+                    <Text style={styles.emptyText}>{t('form.noMatches')}</Text>
                   ) : (
                     filteredOptions.map((option) => {
                       const active = dropdownConfig.value === option;
@@ -450,7 +455,7 @@ export default function AddPropertyDetailsScreen({ presetPropertyId, onNavigate 
         type={modal?.type}
         title={modal?.title}
         message={modal?.message}
-        actionLabel={modal?.actionLabel || 'Done'}
+        actionLabel={modal?.actionLabel || t('form.done')}
         onAction={() => {
           const action = modal?.onAction;
           setModal(null);
@@ -591,31 +596,31 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope-Bold',
     marginBottom: 7,
   },
-input: {
-  height: 48,
-  borderWidth: 1.5,
-  borderColor: colors.border,
-  borderRadius: 12,
-  backgroundColor: '#fafbfc',
-  paddingHorizontal: 14,
-  fontSize: 14.5,
-  fontFamily: 'Manrope-Medium',
-  color: colors.text,
-  marginBottom: 16,
-},
-dropdownButton: {
-  height: 48,
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 8,
-  borderWidth: 1.5,
-  borderColor: colors.border,
-  borderRadius: 12,
-  backgroundColor: '#fafbfc',
-  paddingHorizontal: 14,
-  marginBottom: 16,
-},
+  input: {
+    height: 48,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: '#fafbfc',
+    paddingHorizontal: 14,
+    fontSize: 14.5,
+    fontFamily: 'Manrope-Medium',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  dropdownButton: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: '#fafbfc',
+    paddingHorizontal: 14,
+    marginBottom: 16,
+  },
   dropdownButtonLocked: {
     backgroundColor: colors.border,
     opacity: 0.85,
@@ -646,8 +651,14 @@ dropdownButton: {
     fontFamily: 'Manrope-Regular',
     color: colors.muted,
   },
+  // FIX: single definition (was declared twice)
   stepperGroup: {
-    gap: 4,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  stepperItem: {
+    flex: 1,
+    marginBottom: 16,
   },
   footnote: {
     marginTop: 12,
@@ -778,13 +789,5 @@ dropdownButton: {
   },
   optionLabelActive: {
     color: colors.primary,
-  },
-    stepperGroup: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  stepperItem: {
-    flex: 1,
-    marginBottom: 16,
   },
 });
